@@ -4,6 +4,8 @@ BrowserStream is a self-hosted WebRTC screen-sharing service for meeting-room
 displays. It is derived from
 [Laplace](https://github.com/adamyordan/laplace).
 
+![BrowserStream architecture](docs/images/browserstream-architecture.jpg)
+
 ## Install
 
 ### Requirements

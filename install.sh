@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
+umask 077
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 cd "$SCRIPT_DIR"
 CONFIG=${BROWSERSTREAM_CONFIG:-config.json}
 case "$CONFIG" in /*) ;; *) CONFIG="$SCRIPT_DIR/$CONFIG" ;; esac
@@ -44,16 +45,31 @@ fi
 
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 if [ ! -f "$CONFIG" ]; then
-  cp config.example.json "$CONFIG"
-  python3 - "$CONFIG" <<'PY'
-import json,secrets,sys
-p=sys.argv[1]
-with open(p,encoding='utf-8') as f: c=json.load(f)
+  LAN_IP=$(python3 scripts/detect_lan_ip.py)
+  python3 - "$CONFIG" "$LAN_IP" <<'PY'
+import json,os,secrets,sys,tempfile
+p,lan_ip=sys.argv[1:3]
+with open('config.example.json',encoding='utf-8') as f: c=json.load(f)
+c['turn']['urls']=[f'turn:{lan_ip}:3478']
 c['turn']['shared_secret']=secrets.token_urlsafe(48)
+c['coturn']['listening_ip']=lan_ip
+c['coturn']['relay_ip']=lan_ip
 for room in c['rooms']: room['display_token']=secrets.token_urlsafe(32)
-with open(p,'w',encoding='utf-8') as f: json.dump(c,f,indent=2);f.write('\n')
+directory=os.path.dirname(os.path.abspath(p))
+fd,tmp=tempfile.mkstemp(prefix='.browserstream-config-',dir=directory,text=True)
+try:
+ os.fchmod(fd,0o600)
+ with os.fdopen(fd,'w',encoding='utf-8') as f:
+  json.dump(c,f,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
+ try:
+  os.link(tmp,p)
+ except FileExistsError as exc:
+  raise SystemExit(f'Configuration already exists: {p}') from exc
+finally:
+ try: os.unlink(tmp)
+ except FileNotFoundError: pass
 PY
-  echo "Created $CONFIG with random secrets."
+  echo "Created $CONFIG with LAN IPv4 $LAN_IP and random secrets."
 else
   echo "Using existing $CONFIG (not overwritten)."
 fi

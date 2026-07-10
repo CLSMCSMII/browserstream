@@ -10,7 +10,8 @@ Start the optional pinned service with:
 
 The generated file enables `use-auth-secret`, `fingerprint`, disables the CLI and multicast peers, and uses relay ports 49160–49200. Review these items before Internet exposure:
 
-- set `coturn.listening_ip`, `coturn.relay_ip`, and (behind NAT) `coturn.external_ip` in the central JSON file;
+- `install.sh` detects the IPv4 address whose subnet contains the default gateway and writes it to `coturn.listening_ip`, `coturn.relay_ip`, and the generated `turn:` URL; use `BROWSERSTREAM_LAN_IP` to override detection on multi-homed hosts;
+- set `coturn.external_ip` when the TURN server is behind NAT;
 - restrict TCP/UDP 3478 and relay ports to intended client networks where possible;
 - the bundled profile supports plain `turn:` only; use a separately managed coturn deployment with certificates when `turns:` is required;
 - configure coturn user/allocation quotas appropriate for your deployment;

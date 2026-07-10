@@ -67,27 +67,33 @@ jobs:
           govulncheck ./...
       - name: Installer and generated-config smoke test
         run: |
+          python3 -m unittest -v tests/test_detect_lan_ip.py
+          DETECTED_LAN_IP=$(python3 scripts/detect_lan_ip.py)
+          export DETECTED_LAN_IP
           BROWSERSTREAM_CONFIG=/tmp/browserstream-config.json ./install.sh --init-only
           python3 - <<'PY'
           import json
+          import os
           template = json.load(open('config.example.json'))
           assert all(r['display_token'] == '' for r in template['rooms'])
           assert template['turn']['shared_secret'] == ''
           c = json.load(open('/tmp/browserstream-config.json'))
+          lan_ip = os.environ['DETECTED_LAN_IP']
           assert c['public_url'] == 'https://browserstream.example.com'
           assert [r['id'] for r in c['rooms']] == ['awmeeting', 'smmeeting']
           assert all(len(r['display_token']) >= 32 for r in c['rooms'])
-          assert c['turn']['urls'] == ['turn:browserstream.example.com:3478']
+          assert c['turn']['urls'] == [f'turn:{lan_ip}:3478']
           assert c['allowed_origins'] == ['https://browserstream.example.com']
           assert c['coturn']['realm'] == 'browserstream.example.com'
+          assert c['coturn']['listening_ip'] == lan_ip
+          assert c['coturn']['relay_ip'] == lan_ip
           generated = open('/tmp/browserstream-config.json').read().lower()
           assert 'aware.co.th' not in generated and 'aware.local' not in generated
-          assert '172.16.10.18' not in generated
           assert len(c['turn']['shared_secret']) >= 48
           PY
           go run . -config /tmp/browserstream-config.json -validate-config
           before=$(sha256sum /tmp/browserstream-config.json | cut -d' ' -f1)
-          BROWSERSTREAM_CONFIG=/tmp/browserstream-config.json ./install.sh --init-only
+          BROWSERSTREAM_LAN_IP=198.51.100.20 BROWSERSTREAM_CONFIG=/tmp/browserstream-config.json ./install.sh --init-only
           after=$(sha256sum /tmp/browserstream-config.json | cut -d' ' -f1)
           test "$before" = "$after"
           rm -f /tmp/browserstream-config.json coturn/turnserver.conf
@@ -96,7 +102,7 @@ jobs:
             exit 1
           fi
           test ! -e /tmp/browserstream-mismatch-config.json
-          sudo env BROWSERSTREAM_CONFIG=/tmp/browserstream-root-config.json ./install.sh --init-only
+          sudo env BROWSERSTREAM_LAN_IP=192.0.2.10 BROWSERSTREAM_CONFIG=/tmp/browserstream-root-config.json ./install.sh --init-only
           test "$(stat -c %u /tmp/browserstream-root-config.json)" = 65532
           test "$(stat -c %g /tmp/browserstream-root-config.json)" = 65532
           sudo rm -f /tmp/browserstream-root-config.json coturn/turnserver.conf

@@ -13,3 +13,5 @@ config.json
 coturn/turnserver.conf
 browserstream
 coverage*
+__pycache__/
+*.py[cod]

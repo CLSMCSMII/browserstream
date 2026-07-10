@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BrowserStream</title>
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/main.css?v=1">
+</head>
+<body>
+<nav class="navbar"><a id="brand" class="navbar-brand text-dark" href="/">BrowserStream</a><span id="room-text" class="navbar-brand header-room"></span></nav>
+<main>
+  <section id="home" class="panel">
+    <h1 id="heading">Screen sharing</h1>
+    <p class="help-text">Choose the display where you want to present.</p>
+    <div id="room-buttons"></div>
+    <p id="startup-error" class="error" hidden></p>
+  </section>
+  <section id="presenter" class="config-panel" hidden>
+    <h2>Ready to present</h2>
+    <p>Enter the six-character code shown on the display.</p>
+    <label for="verification-code">Verification code</label>
+    <input id="verification-code" class="form-control verify-input" maxlength="6" autocomplete="off" placeholder="ABC123">
+    <button id="start-share" class="btn btn-dark">Start sharing</button>
+    <button class="btn btn-outline-dark cancel">Cancel</button>
+  </section>
+  <section id="kiosk" hidden>
+    <div id="waiting">
+      <div id="kiosk-brand" class="kiosk-brand">BrowserStream</div>
+      <div id="public-url" class="kiosk-main-url"></div>
+      <div id="qrcode" aria-label="Presenter link QR code"></div>
+      <div class="kiosk-code-label">Verification code</div>
+      <div id="kiosk-code" class="kiosk-code">------</div>
+      <p id="kiosk-help">Waiting for presenter</p>
+    </div>
+    <video id="video" autoplay playsinline muted></video>
+  </section>
+</main>
+<pre id="debug" hidden></pre>
+<script src="/static/qrcode.min.js"></script>
+<script src="/static/main.js?v=2"></script>
+</body>
+</html>

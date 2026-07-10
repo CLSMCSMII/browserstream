@@ -1,0 +1,48 @@
+{
+  "app_name": "BrowserStream",
+  "public_url": "http://localhost:18080",
+  "listen_address": "0.0.0.0:8080",
+  "rooms": [
+    {
+      "id": "board-room",
+      "label": "Board Room",
+      "display_token": "GENERATE_A_RANDOM_DISPLAY_TOKEN"
+    },
+    {
+      "id": "training-room",
+      "label": "Training Room",
+      "display_token": "GENERATE_ANOTHER_DISPLAY_TOKEN"
+    }
+  ],
+  "turn": {
+    "urls": [],
+    "transport_policy": "all",
+    "shared_secret": "",
+    "credential_ttl_seconds": 600
+  },
+  "allowed_origins": [
+    "http://localhost:18080"
+  ],
+  "debug": false,
+  "limits": {
+    "max_message_bytes": 65536,
+    "read_timeout_seconds": 30,
+    "write_timeout_seconds": 10,
+    "idle_timeout_seconds": 90,
+    "max_failed_auth": 5,
+    "lockout_seconds": 300
+  },
+  "tls": {
+    "cert_file": "",
+    "key_file": ""
+  },
+  "coturn": {
+    "realm": "meet.example.com",
+    "listening_ip": "",
+    "relay_ip": "",
+    "external_ip": "",
+    "min_port": 49160,
+    "max_port": 49200
+  },
+  "trusted_proxy_cidrs": []
+}

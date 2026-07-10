@@ -1,0 +1,15 @@
+.idea/
+.DS_Store
+config.json
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+coturn/turnserver.conf
+browserstream
+coverage*

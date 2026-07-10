@@ -38,9 +38,13 @@ jobs:
           assert config['app_name'] == 'AwareStream'
           assert '<title>AwareStream</title>' in html
           assert '>AwareStream</a>' in html
-          assert '>AwareStream</div>' in html
+          assert '>AwareStreaming</div>' in html
           assert "const PRODUCT_NAME = 'AwareStream';" in js
-          assert 'On your computer, open the address above' in html
+          assert "const KIOSK_NAME = 'AwareStreaming';" in js
+          assert 'kiosk-instruction' not in html
+          assert '/static/main.css?v=3' in html
+          assert '/static/main.js?v=4' in html
+          assert 'body.kiosk-display #kiosk::before' in css
           assert 'BrowserStream' not in html
           assert 'QRCode' not in js and "el('qrcode')" not in js
           assert 'qrcode.min.js' not in html

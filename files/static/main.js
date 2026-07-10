@@ -1,6 +1,7 @@
 "use strict";
 
 const PRODUCT_NAME = 'AwareStream';
+const KIOSK_NAME = 'AwareStreaming';
 const state = {config:null, room:null, socket:null, pc:null, stream:null, debug:false, pendingCandidates:[]};
 const el = id => document.getElementById(id);
 const show = id => { ['home','presenter','kiosk'].forEach(x => el(x).hidden = x !== id); };
@@ -24,8 +25,8 @@ async function loadConfig() {
   state.debug = state.config.debug === true && new URL(location.href).searchParams.get('debug') === '1';
   document.title = PRODUCT_NAME;
   el('brand').textContent = PRODUCT_NAME;
-  el('kiosk-brand').textContent = PRODUCT_NAME;
-  el('public-url').textContent = baseURL();
+  el('kiosk-brand').textContent = KIOSK_NAME;
+  el('public-url').textContent = new URL(baseURL()).host;
   const buttons=el('room-buttons'); buttons.replaceChildren();
   state.config.rooms.forEach(room => { const b=document.createElement('button'); b.type='button';b.className='btn btn-dark btn-block btn-lg room-button';b.textContent=room.label;b.addEventListener('click',()=>openPresenter(room.id));buttons.appendChild(b); });
 }

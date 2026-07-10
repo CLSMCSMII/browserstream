@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#7a1822">
   <title>AwareStream</title>
   <link rel="stylesheet" href="/static/bootstrap.min.css">
-  <link rel="stylesheet" href="/static/main.css?v=2">
+  <link rel="stylesheet" href="/static/main.css?v=3">
 </head>
 <body>
 <nav class="navbar">
@@ -35,18 +35,17 @@
   </section>
   <section id="kiosk" hidden>
     <div id="waiting">
-      <div id="kiosk-brand" class="kiosk-brand">AwareStream</div>
+      <div id="kiosk-brand" class="kiosk-brand">AwareStreaming</div>
       <div id="public-url" class="kiosk-main-url"></div>
-      <p class="kiosk-instruction">On your computer, open the address above and enter this code.</p>
       <div class="kiosk-code-label">Verification code</div>
       <div id="kiosk-code" class="kiosk-code">------</div>
-      <p id="kiosk-help">Waiting for presenter</p>
+      <p id="kiosk-help" aria-live="polite"></p>
     </div>
     <!-- [html-validate-disable-next no-autoplay] -->
     <video id="video" autoplay playsinline muted>Shared presentation</video>
   </section>
 </main>
 <pre id="debug" hidden></pre>
-<script src="/static/main.js?v=3"></script>
+<script src="/static/main.js?v=4"></script>
 </body>
 </html>

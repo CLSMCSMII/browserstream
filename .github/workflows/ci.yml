@@ -23,6 +23,31 @@ jobs:
         run: go test -race -coverprofile=coverage.out ./...
       - name: Build
         run: go build ./...
+      - name: AwareStream frontend contract
+        run: |
+          npx --yes html-validate@11.5.5 files/main.html
+          node --check files/static/main.js
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          html = Path('files/main.html').read_text()
+          js = Path('files/static/main.js').read_text()
+          css = Path('files/static/main.css').read_text()
+          notice = Path('NOTICE').read_text().lower()
+          config = json.loads(Path('config.example.json').read_text())
+          assert config['app_name'] == 'AwareStream'
+          assert '<title>AwareStream</title>' in html
+          assert '>AwareStream</a>' in html
+          assert '>AwareStream</div>' in html
+          assert "const PRODUCT_NAME = 'AwareStream';" in js
+          assert 'On your computer, open the address above' in html
+          assert 'BrowserStream' not in html
+          assert 'QRCode' not in js and "el('qrcode')" not in js
+          assert 'qrcode.min.js' not in html
+          assert '#qrcode' not in css
+          assert not Path('files/static/qrcode.min.js').exists()
+          assert 'qrcodejs' not in notice
+          PY
       - name: Vulnerability scan
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0

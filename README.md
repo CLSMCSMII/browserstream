@@ -19,6 +19,10 @@ cd browserstream
 
 Remote screen capture requires HTTPS. Never commit generated `config.json`, `coturn/turnserver.conf`, certificates, or private keys.
 
+## Presenting with AwareStream
+
+Presentation is desktop-only. On a computer, open `https://meetingroom.aware.co.th`, select the meeting-room display, enter its six-character verification code, and choose the screen or window to share. QR enrollment and mobile/tablet casting are intentionally unsupported.
+
 ## Configuration
 
 The application reads JSON from `-config PATH`; `BROWSERSTREAM_CONFIG` sets the default path. Only the secret-free Aware template `config.example.json` is committed. `install.sh` generates fresh room and TURN secrets every time it creates a new config. Compose runs the application as the non-root installer UID/GID; when the installer itself runs as root, it uses unprivileged UID/GID `65532` and aligns ownership of the mode-`0600` configuration.

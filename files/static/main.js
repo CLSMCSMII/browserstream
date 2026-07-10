@@ -1,5 +1,6 @@
 "use strict";
 
+const PRODUCT_NAME = 'AwareStream';
 const state = {config:null, room:null, socket:null, pc:null, stream:null, debug:false, pendingCandidates:[]};
 const el = id => document.getElementById(id);
 const show = id => { ['home','presenter','kiosk'].forEach(x => el(x).hidden = x !== id); };
@@ -21,10 +22,9 @@ async function loadConfig() {
   if (!response.ok) throw new Error(`configuration request failed (${response.status})`);
   state.config = await response.json();
   state.debug = state.config.debug === true && new URL(location.href).searchParams.get('debug') === '1';
-  document.title = state.config.app_name;
-  el('brand').textContent = state.config.app_name;
-  el('heading').textContent = `${state.config.app_name} screen sharing`;
-  el('kiosk-brand').textContent = state.config.app_name;
+  document.title = PRODUCT_NAME;
+  el('brand').textContent = PRODUCT_NAME;
+  el('kiosk-brand').textContent = PRODUCT_NAME;
   el('public-url').textContent = baseURL();
   const buttons=el('room-buttons'); buttons.replaceChildren();
   state.config.rooms.forEach(room => { const b=document.createElement('button'); b.type='button';b.className='btn btn-dark btn-block btn-lg room-button';b.textContent=room.label;b.addEventListener('click',()=>openPresenter(room.id));buttons.appendChild(b); });
@@ -84,8 +84,6 @@ function displayToken() {
 function openDisplay(roomID) {
   const room=roomByID(roomID);if(!room){el('startup-error').hidden=false;el('startup-error').textContent='Unknown room.';return;}
   state.room=room;setRoomText();show('kiosk');document.body.classList.add('kiosk-display');
-  const presenterURL=`${baseURL()}/?present=1&room=${encodeURIComponent(room.id)}`;
-  el('qrcode').replaceChildren(); new QRCode(el('qrcode'),{text:presenterURL,width:180,height:180,correctLevel:QRCode.CorrectLevel.M});
   const token=displayToken();if(!token){el('kiosk-help').textContent='Display enrollment token is missing. See the installation documentation.';return;}
   state.socket=new WebSocket(wsURL(`/ws_display?id=${encodeURIComponent(room.id)}`));state.socket.addEventListener('open',()=>send('auth',token));
   state.socket.addEventListener('message',async event=>{let m;try{m=JSON.parse(event.data);}catch{return;}if(m.Type==='iceConfig'){applyICEConfig(m.Value);}else if(m.Type==='displayReady'){el('kiosk-code').textContent=m.SessionID;}else if(m.Type==='refreshCode'){el('kiosk-code').textContent=m.Value;}else if(m.Type==='newSession'){clearPeer();await displayPeer(m.SessionID);}else if(m.Type==='addCallerIceCandidate'){await addRemoteCandidate(m.Value);}else if(m.Type==='gotOffer'&&state.pc)await answerOffer(m.SessionID,JSON.parse(m.Value));else if(m.Type==='presenterClosed'){clearPeer();el('kiosk-code').textContent=m.Value;}else if(m.Type==='unauthorized'){el('kiosk-help').textContent='Display enrollment failed.';}});

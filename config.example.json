@@ -1,5 +1,5 @@
 {
-  "app_name": "BrowserStream",
+  "app_name": "AwareStream",
   "public_url": "https://meetingroom.aware.co.th",
   "listen_address": "0.0.0.0:8080",
   "rooms": [

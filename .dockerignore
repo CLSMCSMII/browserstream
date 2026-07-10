@@ -2,7 +2,6 @@
 .github
 doc
 *.md
-LICENSE
 config.json
 *.key
 *.pem

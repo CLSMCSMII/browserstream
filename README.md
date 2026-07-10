@@ -11,9 +11,9 @@ git clone https://github.com/CLSMCSMII/browserstream.git
 cd browserstream
 ```
 
-## Aware production quick start
+## Quick start
 
-1. Run `./install.sh --init-only`. It creates mode-`0600` `config.json` for `meetingroom.aware.co.th`, generates independent secrets for rooms `awmeeting` and `smmeeting`, and renders coturn configuration for `172.16.10.18`.
+1. Run `./install.sh --init-only`. It creates a mode-`0600` `config.json` using the placeholder domain `browserstream.example.com` and generates independent room and TURN secrets. Replace the placeholder URLs and optional coturn interface addresses with values for your deployment before starting the service.
 2. Review `config.json` without publishing its generated `display_token` or `shared_secret`. If Nginx has a fixed private address, add that exact `/32` to `trusted_proxy_cidrs`.
 3. Run `./install.sh --with-turn`. Compose publishes BrowserStream on `${BROWSERSTREAM_BIND_ADDRESS:-172.16.10.18}:18080`; the external Nginx proxy should forward HTTPS/WebSockets to that address.
 
@@ -21,7 +21,7 @@ Remote screen capture requires HTTPS. Never commit generated `config.json`, `cot
 
 ## Presenting with AwareStream
 
-Presentation is desktop-only. On a computer, open `https://meetingroom.aware.co.th`, select the meeting-room display, enter its six-character verification code, and choose the screen or window to share. QR enrollment and mobile/tablet casting are intentionally unsupported.
+Presentation is desktop-only. On a computer, open your configured `public_url` (the generated example uses `https://browserstream.example.com`), select the meeting-room display, enter its six-character verification code, and choose the screen or window to share. QR enrollment and mobile/tablet casting are intentionally unsupported.
 
 ## Configuration
 
@@ -69,7 +69,7 @@ location / {
 }
 ```
 
-Set `public_url` and `allowed_origins` to `https://meetingroom.aware.co.th`. The Compose default binds the backend to private address `172.16.10.18`; override it with `BROWSERSTREAM_BIND_ADDRESS` only when the deployment host changes. Permit TCP port 18080 only from the Nginx server. If per-client lockouts should use `X-Forwarded-For`, set `trusted_proxy_cidrs` to the reverse proxy's exact source `/32`; headers from other peers are ignored.
+Replace `browserstream.example.com` in `public_url`, `allowed_origins`, the TURN URL, and the coturn realm with your deployment hostname. The Compose default binds the backend to private address `172.16.10.18`; override it with `BROWSERSTREAM_BIND_ADDRESS` when the deployment host differs. Permit TCP port 18080 only from the Nginx server. If per-client lockouts should use `X-Forwarded-For`, set `trusted_proxy_cidrs` to the reverse proxy's exact source `/32`; headers from other peers are ignored.
 
 ## TURN
 

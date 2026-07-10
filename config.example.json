@@ -1,6 +1,6 @@
 {
   "app_name": "AwareStream",
-  "public_url": "https://meetingroom.aware.co.th",
+  "public_url": "https://browserstream.example.com",
   "listen_address": "0.0.0.0:8080",
   "rooms": [
     {
@@ -16,14 +16,14 @@
   ],
   "turn": {
     "urls": [
-      "turn:172.16.10.18:3478"
+      "turn:browserstream.example.com:3478"
     ],
     "transport_policy": "all",
     "shared_secret": "",
     "credential_ttl_seconds": 600
   },
   "allowed_origins": [
-    "https://meetingroom.aware.co.th"
+    "https://browserstream.example.com"
   ],
   "debug": false,
   "limits": {
@@ -39,9 +39,9 @@
     "key_file": ""
   },
   "coturn": {
-    "realm": "awp1-cnx1-gte01.aware.local",
-    "listening_ip": "172.16.10.18",
-    "relay_ip": "172.16.10.18",
+    "realm": "browserstream.example.com",
+    "listening_ip": "",
+    "relay_ip": "",
     "external_ip": "",
     "min_port": 49160,
     "max_port": 49200

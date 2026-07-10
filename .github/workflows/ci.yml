@@ -35,7 +35,16 @@ jobs:
           css = Path('files/static/main.css').read_text()
           notice = Path('NOTICE').read_text().lower()
           config = json.loads(Path('config.example.json').read_text())
+          config_text = Path('config.example.json').read_text().lower()
           assert config['app_name'] == 'AwareStream'
+          assert config['public_url'] == 'https://browserstream.example.com'
+          assert config['allowed_origins'] == ['https://browserstream.example.com']
+          assert config['turn']['urls'] == ['turn:browserstream.example.com:3478']
+          assert config['coturn']['realm'] == 'browserstream.example.com'
+          assert config['coturn']['listening_ip'] == ''
+          assert config['coturn']['relay_ip'] == ''
+          assert 'aware.co.th' not in config_text and 'aware.local' not in config_text
+          assert '172.16.10.18' not in config_text
           assert '<title>AwareStream</title>' in html
           assert '>AwareStream</a>' in html
           assert '>AwareStreaming</div>' in html
@@ -65,14 +74,22 @@ jobs:
           assert all(r['display_token'] == '' for r in template['rooms'])
           assert template['turn']['shared_secret'] == ''
           c = json.load(open('/tmp/browserstream-config.json'))
-          assert c['public_url'] == 'https://meetingroom.aware.co.th'
+          assert c['public_url'] == 'https://browserstream.example.com'
           assert [r['id'] for r in c['rooms']] == ['awmeeting', 'smmeeting']
           assert all(len(r['display_token']) >= 32 for r in c['rooms'])
-          assert c['turn']['urls'] == ['turn:172.16.10.18:3478']
+          assert c['turn']['urls'] == ['turn:browserstream.example.com:3478']
+          assert c['allowed_origins'] == ['https://browserstream.example.com']
+          assert c['coturn']['realm'] == 'browserstream.example.com'
+          generated = open('/tmp/browserstream-config.json').read().lower()
+          assert 'aware.co.th' not in generated and 'aware.local' not in generated
+          assert '172.16.10.18' not in generated
           assert len(c['turn']['shared_secret']) >= 48
-          assert c['coturn']['realm'] == 'awp1-cnx1-gte01.aware.local'
           PY
           go run . -config /tmp/browserstream-config.json -validate-config
+          before=$(sha256sum /tmp/browserstream-config.json | cut -d' ' -f1)
+          BROWSERSTREAM_CONFIG=/tmp/browserstream-config.json ./install.sh --init-only
+          after=$(sha256sum /tmp/browserstream-config.json | cut -d' ' -f1)
+          test "$before" = "$after"
           rm -f /tmp/browserstream-config.json coturn/turnserver.conf
           if BROWSERSTREAM_UID=65531 BROWSERSTREAM_CONFIG=/tmp/browserstream-mismatch-config.json ./install.sh --init-only; then
             echo 'mismatched non-root UID unexpectedly accepted' >&2

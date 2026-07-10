@@ -6,10 +6,24 @@ cd "$SCRIPT_DIR"
 CONFIG=${BROWSERSTREAM_CONFIG:-config.json}
 case "$CONFIG" in /*) ;; *) CONFIG="$SCRIPT_DIR/$CONFIG" ;; esac
 export BROWSERSTREAM_CONFIG="$CONFIG"
-# Run the application container as the installing host user so its non-root
-# process can read the mode-0600 bind-mounted configuration.
-BROWSERSTREAM_UID=${BROWSERSTREAM_UID:-$(id -u)}
-BROWSERSTREAM_GID=${BROWSERSTREAM_GID:-$(id -g)}
+BROWSERSTREAM_BIND_ADDRESS=${BROWSERSTREAM_BIND_ADDRESS:-172.16.10.18}
+export BROWSERSTREAM_BIND_ADDRESS
+# Run the application container as a non-root UID/GID that can read the
+# mode-0600 bind-mounted configuration. Root installs use an unprivileged
+# numeric identity; non-root installs use the installing user's identity.
+HOST_UID=$(id -u)
+HOST_GID=$(id -g)
+if [ "$HOST_UID" -eq 0 ]; then
+  BROWSERSTREAM_UID=${BROWSERSTREAM_UID:-65532}
+  BROWSERSTREAM_GID=${BROWSERSTREAM_GID:-65532}
+else
+  BROWSERSTREAM_UID=${BROWSERSTREAM_UID:-$HOST_UID}
+  BROWSERSTREAM_GID=${BROWSERSTREAM_GID:-$HOST_GID}
+  if [ "$BROWSERSTREAM_UID" != "$HOST_UID" ] || [ "$BROWSERSTREAM_GID" != "$HOST_GID" ]; then
+    echo "Non-root installs require BROWSERSTREAM_UID:GID to match the configuration owner ($HOST_UID:$HOST_GID)" >&2
+    exit 1
+  fi
+fi
 export BROWSERSTREAM_UID BROWSERSTREAM_GID
 WITH_TURN=0
 STOP_TURN=0
@@ -44,6 +58,9 @@ else
   echo "Using existing $CONFIG (not overwritten)."
 fi
 chmod 600 "$CONFIG"
+if [ "$HOST_UID" -eq 0 ]; then
+  chown "$BROWSERSTREAM_UID:$BROWSERSTREAM_GID" "$CONFIG"
+fi
 
 python3 - "$CONFIG" coturn/turnserver.conf "$WITH_TURN" <<'PY'
 import json,sys
@@ -90,4 +107,4 @@ if [ "$WITH_TURN" -eq 1 ]; then
 else
   docker compose up -d browserstream
 fi
-echo "BrowserStream is running on http://localhost:${BROWSERSTREAM_PORT:-18080}. Configure a TLS reverse proxy for remote use."
+echo "BrowserStream is running on http://${BROWSERSTREAM_BIND_ADDRESS}:${BROWSERSTREAM_PORT:-18080}. Configure the external TLS reverse proxy to use this backend."

@@ -11,23 +11,23 @@ git clone https://github.com/CLSMCSMII/browserstream.git
 cd browserstream
 ```
 
-## Three-step quick start
+## Aware production quick start
 
-1. Run `./install.sh`. On first run it creates mode-`0600` `config.json`, generates independent TURN and display secrets, validates the configuration, builds the image, and starts the app on `127.0.0.1:18080`.
-2. Open `http://localhost:18080` for a local test. For production, edit `config.json`: set `public_url`, matching `allowed_origins`, rooms, and optional STUN/TURN URLs; run `./install.sh` again. Existing configuration is never overwritten.
-3. Put an HTTPS reverse proxy in front of `127.0.0.1:18080`, then enroll each kiosk once at `https://meet.example.com/room/ROOM_ID#token=DISPLAY_TOKEN`. The fragment is removed immediately and retained only in that browser's local storage.
+1. Run `./install.sh --init-only`. It creates mode-`0600` `config.json` for `meetingroom.aware.co.th`, generates independent secrets for rooms `awmeeting` and `smmeeting`, and renders coturn configuration for `172.16.10.18`.
+2. Review `config.json` without publishing its generated `display_token` or `shared_secret`. If Nginx has a fixed private address, add that exact `/32` to `trusted_proxy_cidrs`.
+3. Run `./install.sh --with-turn`. Compose publishes BrowserStream on `${BROWSERSTREAM_BIND_ADDRESS:-172.16.10.18}:18080`; the external Nginx proxy should forward HTTPS/WebSockets to that address.
 
-Remote screen capture requires HTTPS (localhost is the browser exception). Never commit generated `config.json`, `coturn/turnserver.conf`, certificates, or private keys.
+Remote screen capture requires HTTPS. Never commit generated `config.json`, `coturn/turnserver.conf`, certificates, or private keys.
 
 ## Configuration
 
-The application reads JSON from `-config PATH`; `BROWSERSTREAM_CONFIG` sets the default path. Only `config.example.json` is committed. `install.sh` also passes the installing user's UID/GID to Compose so the non-root container can read the mode-`0600` configuration; when invoking Compose directly, set `BROWSERSTREAM_UID` and `BROWSERSTREAM_GID` to the configuration owner's numeric IDs.
+The application reads JSON from `-config PATH`; `BROWSERSTREAM_CONFIG` sets the default path. Only the secret-free Aware template `config.example.json` is committed. `install.sh` generates fresh room and TURN secrets every time it creates a new config. Compose runs the application as the non-root installer UID/GID; when the installer itself runs as root, it uses unprivileged UID/GID `65532` and aligns ownership of the mode-`0600` configuration.
 
 | Key | Meaning |
 |---|---|
 | `app_name` | Public UI name. |
 | `public_url` | Canonical HTTP(S) origin; no subpath, credentials, query, or fragment. |
-| `listen_address` | Internal host and port; Compose publishes it on loopback only. |
+| `listen_address` | Internal container address (`0.0.0.0:8080` for Compose); `BROWSERSTREAM_BIND_ADDRESS` controls the private host address published to Nginx. |
 | `rooms[].id` | Unique lowercase ID matching `[a-z0-9][a-z0-9-]{0,62}`. |
 | `rooms[].label` | Display-safe user-facing label. |
 | `rooms[].display_token` | Per-room secret (16+ characters) required before a display can own the room. Never send it to presenters. |
@@ -54,7 +54,7 @@ Example Nginx location (certificate setup omitted):
 
 ```nginx
 location / {
-    proxy_pass http://127.0.0.1:18080;
+    proxy_pass http://172.16.10.18:18080;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header Upgrade $http_upgrade;
@@ -65,7 +65,7 @@ location / {
 }
 ```
 
-Set `public_url` and `allowed_origins` to the external HTTPS origin. If per-client lockouts should use `X-Forwarded-For`, set `trusted_proxy_cidrs` to the reverse proxy's exact source network; headers from other peers are ignored. Do not expose port 18080 publicly.
+Set `public_url` and `allowed_origins` to `https://meetingroom.aware.co.th`. The Compose default binds the backend to private address `172.16.10.18`; override it with `BROWSERSTREAM_BIND_ADDRESS` only when the deployment host changes. Permit TCP port 18080 only from the Nginx server. If per-client lockouts should use `X-Forwarded-For`, set `trusted_proxy_cidrs` to the reverse proxy's exact source `/32`; headers from other peers are ignored.
 
 ## TURN
 

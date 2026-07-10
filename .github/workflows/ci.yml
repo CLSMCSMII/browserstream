@@ -30,10 +30,48 @@ jobs:
       - name: Installer and generated-config smoke test
         run: |
           BROWSERSTREAM_CONFIG=/tmp/browserstream-config.json ./install.sh --init-only
+          python3 - <<'PY'
+          import json
+          template = json.load(open('config.example.json'))
+          assert all(r['display_token'] == '' for r in template['rooms'])
+          assert template['turn']['shared_secret'] == ''
+          c = json.load(open('/tmp/browserstream-config.json'))
+          assert c['public_url'] == 'https://meetingroom.aware.co.th'
+          assert [r['id'] for r in c['rooms']] == ['awmeeting', 'smmeeting']
+          assert all(len(r['display_token']) >= 32 for r in c['rooms'])
+          assert c['turn']['urls'] == ['turn:172.16.10.18:3478']
+          assert len(c['turn']['shared_secret']) >= 48
+          assert c['coturn']['realm'] == 'awp1-cnx1-gte01.aware.local'
+          PY
           go run . -config /tmp/browserstream-config.json -validate-config
           rm -f /tmp/browserstream-config.json coturn/turnserver.conf
-      - name: Compose validation
-        run: cp config.example.json config.json && docker compose config >/dev/null
+          if BROWSERSTREAM_UID=65531 BROWSERSTREAM_CONFIG=/tmp/browserstream-mismatch-config.json ./install.sh --init-only; then
+            echo 'mismatched non-root UID unexpectedly accepted' >&2
+            exit 1
+          fi
+          test ! -e /tmp/browserstream-mismatch-config.json
+          sudo env BROWSERSTREAM_CONFIG=/tmp/browserstream-root-config.json ./install.sh --init-only
+          test "$(stat -c %u /tmp/browserstream-root-config.json)" = 65532
+          test "$(stat -c %g /tmp/browserstream-root-config.json)" = 65532
+          sudo rm -f /tmp/browserstream-root-config.json coturn/turnserver.conf
+      - name: Compose validation and hardening assertions
+        run: |
+          cp config.example.json config.json
+          docker compose --profile turn config --format json > /tmp/compose.json
+          BROWSERSTREAM_BIND_ADDRESS=127.0.0.1 docker compose config --format json > /tmp/compose-override.json
+          python3 - <<'PY'
+          import json
+          c = json.load(open('/tmp/compose.json'))
+          app = c['services']['browserstream']
+          turn = c['services']['coturn']
+          assert app['ports'][0]['host_ip'] == '172.16.10.18'
+          assert set(turn['cap_add']) == {'NET_BIND_SERVICE', 'SETUID', 'SETGID'}
+          assert turn['cap_drop'] == ['ALL']
+          assert turn['security_opt'] == ['no-new-privileges:true']
+          override = json.load(open('/tmp/compose-override.json'))
+          assert override['services']['browserstream']['ports'][0]['host_ip'] == '127.0.0.1'
+          PY
+          rm -f config.json /tmp/compose.json /tmp/compose-override.json
       - name: Container build
         run: docker build --pull -t browserstream:ci .
   secrets:

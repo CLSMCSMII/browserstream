@@ -1,27 +1,29 @@
 {
   "app_name": "BrowserStream",
-  "public_url": "http://localhost:18080",
+  "public_url": "https://meetingroom.aware.co.th",
   "listen_address": "0.0.0.0:8080",
   "rooms": [
     {
-      "id": "board-room",
-      "label": "Board Room",
-      "display_token": "GENERATE_A_RANDOM_DISPLAY_TOKEN"
+      "id": "awmeeting",
+      "label": "Aware Building",
+      "display_token": ""
     },
     {
-      "id": "training-room",
-      "label": "Training Room",
-      "display_token": "GENERATE_ANOTHER_DISPLAY_TOKEN"
+      "id": "smmeeting",
+      "label": "Siammandalay Building",
+      "display_token": ""
     }
   ],
   "turn": {
-    "urls": [],
+    "urls": [
+      "turn:172.16.10.18:3478"
+    ],
     "transport_policy": "all",
     "shared_secret": "",
     "credential_ttl_seconds": 600
   },
   "allowed_origins": [
-    "http://localhost:18080"
+    "https://meetingroom.aware.co.th"
   ],
   "debug": false,
   "limits": {
@@ -37,9 +39,9 @@
     "key_file": ""
   },
   "coturn": {
-    "realm": "meet.example.com",
-    "listening_ip": "",
-    "relay_ip": "",
+    "realm": "awp1-cnx1-gte01.aware.local",
+    "listening_ip": "172.16.10.18",
+    "relay_ip": "172.16.10.18",
     "external_ip": "",
     "min_port": 49160,
     "max_port": 49200

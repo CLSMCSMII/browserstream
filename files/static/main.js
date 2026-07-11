@@ -1,7 +1,7 @@
 "use strict";
 
 const PRODUCT_NAME = 'AwareStream';
-const KIOSK_NAME = 'AwareStreaming';
+const KIOSK_NAME = 'AwareStream';
 const state = {config:null, room:null, socket:null, pc:null, stream:null, debug:false, pendingCandidates:[]};
 const el = id => document.getElementById(id);
 const show = id => { ['home','presenter','kiosk'].forEach(x => el(x).hidden = x !== id); };

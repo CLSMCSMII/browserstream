@@ -37,11 +37,21 @@ if value is not None:
     print(value)
 PY
 }
+CONFIG_WAS_SET=${BROWSERSTREAM_CONFIG+x}
+BIND_WAS_SET=${BROWSERSTREAM_BIND_ADDRESS+x}
+PORT_WAS_SET=${BROWSERSTREAM_PORT+x}
+UID_WAS_SET=${BROWSERSTREAM_UID+x}
+GID_WAS_SET=${BROWSERSTREAM_GID+x}
 if [ -z "${BROWSERSTREAM_CONFIG+x}" ]; then BROWSERSTREAM_CONFIG=$(persisted_value BROWSERSTREAM_CONFIG); fi
 if [ -z "${BROWSERSTREAM_BIND_ADDRESS+x}" ]; then BROWSERSTREAM_BIND_ADDRESS=$(persisted_value BROWSERSTREAM_BIND_ADDRESS); fi
 if [ -z "${BROWSERSTREAM_PORT+x}" ]; then BROWSERSTREAM_PORT=$(persisted_value BROWSERSTREAM_PORT); fi
 if [ -z "${BROWSERSTREAM_UID+x}" ]; then BROWSERSTREAM_UID=$(persisted_value BROWSERSTREAM_UID); fi
 if [ -z "${BROWSERSTREAM_GID+x}" ]; then BROWSERSTREAM_GID=$(persisted_value BROWSERSTREAM_GID); fi
+if [ "$CONFIG_WAS_SET" = x ] && [ -z "$BROWSERSTREAM_CONFIG" ]; then echo "BROWSERSTREAM_CONFIG must not be empty" >&2; exit 2; fi
+if [ "$BIND_WAS_SET" = x ] && [ -z "$BROWSERSTREAM_BIND_ADDRESS" ]; then echo "BROWSERSTREAM_BIND_ADDRESS must not be empty" >&2; exit 2; fi
+if [ "$PORT_WAS_SET" = x ] && [ -z "$BROWSERSTREAM_PORT" ]; then echo "BROWSERSTREAM_PORT must not be empty" >&2; exit 2; fi
+if [ "$UID_WAS_SET" = x ] && [ -z "$BROWSERSTREAM_UID" ]; then echo "BROWSERSTREAM_UID must not be empty" >&2; exit 2; fi
+if [ "$GID_WAS_SET" = x ] && [ -z "$BROWSERSTREAM_GID" ]; then echo "BROWSERSTREAM_GID must not be empty" >&2; exit 2; fi
 CONFIG=${BROWSERSTREAM_CONFIG:-config.json}
 case "$CONFIG" in /*) ;; *) CONFIG="$SCRIPT_DIR/$CONFIG" ;; esac
 export BROWSERSTREAM_CONFIG="$CONFIG"

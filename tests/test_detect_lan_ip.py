@@ -445,6 +445,36 @@ class InstallerAtomicCreationTests(unittest.TestCase):
             self.assertFalse((root / ".env").exists())
             self.assertFalse((root / "config.json").exists())
 
+    def test_installer_rejects_explicitly_empty_managed_values(self):
+        for key in (
+            "BROWSERSTREAM_CONFIG",
+            "BROWSERSTREAM_BIND_ADDRESS",
+            "BROWSERSTREAM_PORT",
+            "BROWSERSTREAM_UID",
+            "BROWSERSTREAM_GID",
+        ):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.copy_installer(root)
+                environment = self.installer_environment(root)
+                environment[key] = ""
+
+                completed = subprocess.run(
+                    ["sh", "install.sh", "--init-only"],
+                    cwd=root,
+                    env=environment,
+                    input="\n" * 9,
+                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn(f"{key} must not be empty", completed.stderr)
+                self.assertFalse((root / ".env").exists())
+                self.assertFalse((root / "config.json").exists())
+
     def test_plain_install_uses_interactive_coturn_choice(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

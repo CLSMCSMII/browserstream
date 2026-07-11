@@ -254,6 +254,83 @@ class InstallerAtomicCreationTests(unittest.TestCase):
             generated = json.loads((root / "config.json").read_text(encoding="utf-8"))
             self.assertEqual(generated["rooms"][0]["id"], "valid-room")
 
+    def test_init_persists_compose_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+
+            subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=self.installer_environment(root),
+                input="\n" * 9,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            compose_env = root / ".env"
+            values = dict(
+                line.split("=", 1)
+                for line in compose_env.read_text(encoding="utf-8").splitlines()
+            )
+            self.assertEqual(values["BROWSERSTREAM_BIND_ADDRESS"], "192.0.2.10")
+            self.assertEqual(values["BROWSERSTREAM_PORT"], "18080")
+            self.assertEqual(values["BROWSERSTREAM_UID"], str(os.getuid()))
+            self.assertEqual(values["BROWSERSTREAM_GID"], str(os.getgid()))
+            self.assertEqual(compose_env.stat().st_mode & 0o777, 0o600)
+
+    def test_init_updates_managed_environment_without_losing_operator_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+            compose_env = root / ".env"
+            compose_env.write_text(
+                "OPERATOR_SETTING=keep-me\n"
+                "BROWSERSTREAM_BIND_ADDRESS=198.51.100.99\n",
+                encoding="utf-8",
+            )
+
+            subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=self.installer_environment(root),
+                input="\n" * 9,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            lines = compose_env.read_text(encoding="utf-8").splitlines()
+            self.assertIn("OPERATOR_SETTING=keep-me", lines)
+            self.assertEqual(lines.count("BROWSERSTREAM_BIND_ADDRESS=192.0.2.10"), 1)
+            self.assertNotIn("BROWSERSTREAM_BIND_ADDRESS=198.51.100.99", lines)
+
+    def test_init_refuses_symlinked_compose_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+            target = root / "operator.env"
+            target.write_text("DO_NOT_CHANGE=yes\n", encoding="utf-8")
+            (root / ".env").symlink_to(target)
+
+            completed = subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=self.installer_environment(root),
+                input="\n" * 9,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Refusing to replace symlink", completed.stderr)
+            self.assertEqual(target.read_text(encoding="utf-8"), "DO_NOT_CHANGE=yes\n")
+
     def test_plain_install_uses_interactive_coturn_choice(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

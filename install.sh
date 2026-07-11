@@ -81,6 +81,50 @@ if [ -z "$BROWSERSTREAM_BIND_ADDRESS" ]; then
   BROWSERSTREAM_BIND_ADDRESS=$(python3 scripts/detect_lan_ip.py)
 fi
 export BROWSERSTREAM_BIND_ADDRESS
+BROWSERSTREAM_PORT=${BROWSERSTREAM_PORT:-18080}
+export BROWSERSTREAM_PORT
+
+# Persist Compose interpolation values so later direct Compose commands use the
+# same bind address and unprivileged configuration owner as the installer.
+# Preserve unrelated operator-managed .env entries.
+[ ! -L .env ] || { echo "Refusing to replace symlink: $SCRIPT_DIR/.env" >&2; exit 1; }
+python3 - .env "$BROWSERSTREAM_BIND_ADDRESS" "$BROWSERSTREAM_PORT" "$BROWSERSTREAM_UID" "$BROWSERSTREAM_GID" "$CONFIG" <<'PY'
+import os
+import sys
+import tempfile
+
+path, bind, port, uid, gid, config = sys.argv[1:]
+managed = {
+    "BROWSERSTREAM_BIND_ADDRESS": bind,
+    "BROWSERSTREAM_PORT": port,
+    "BROWSERSTREAM_UID": uid,
+    "BROWSERSTREAM_GID": gid,
+    "BROWSERSTREAM_CONFIG": config,
+}
+lines = []
+if os.path.exists(path):
+    with open(path, encoding="utf-8") as source:
+        for line in source:
+            key = line.split("=", 1)[0].strip()
+            if key not in managed:
+                lines.append(line.rstrip("\n"))
+for key, value in managed.items():
+    if "\n" in value or "\r" in value:
+        raise SystemExit(f"invalid newline in {key}")
+    lines.append(f"{key}={value}")
+directory = os.path.dirname(os.path.abspath(path))
+fd, temporary = tempfile.mkstemp(prefix=".env.tmp-", dir=directory, text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as target:
+        target.write("\n".join(lines) + "\n")
+        target.flush()
+        os.fsync(target.fileno())
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
+PY
 
 if [ "$ADD_ROOM" -eq 0 ]; then
   python3 - "$CONFIG" coturn/turnserver.conf "$WITH_TURN" <<'PY'

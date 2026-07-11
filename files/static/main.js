@@ -44,23 +44,20 @@ function presenterFailure(message) {
   show('presenter');
   fail(message);
 }
-async function captureAndStart() {
-  try { state.stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true}); }
-  catch(e){ return presenterFailure(`Screen capture failed: ${e.message||e}`); }
-  el('video').srcObject=state.stream; show('kiosk'); document.body.classList.add('presenter-mode','playing');
-  state.stream.getVideoTracks().forEach(t=>t.addEventListener('ended',()=>location.assign(baseURL())));
-  send('startSession');
-}
 async function startSharing() {
   const code=el('verification-code').value.trim().toUpperCase();
   if(!/^[A-Z0-9]{6}$/.test(code))return fail('Enter the six-character code shown on the display.');
   el('start-share').disabled=true;
+  try { state.stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true}); }
+  catch(e){ return presenterFailure(`Screen capture failed: ${e.message||e}`); }
+  el('video').srcObject=state.stream; show('kiosk'); document.body.classList.add('presenter-mode','playing');
+  state.stream.getVideoTracks().forEach(t=>t.addEventListener('ended',()=>location.assign(baseURL())));
   state.socket=new WebSocket(wsURL(`/ws_present?id=${encodeURIComponent(state.room.id)}`));
   state.socket.addEventListener('open',()=>send('auth',code));
   state.socket.addEventListener('message',async event=>{
     let m;try{m=JSON.parse(event.data);}catch{return;}
     if(m.Type==='iceConfig')applyICEConfig(m.Value);
-    else if(m.Type==='authAccepted')await captureAndStart();
+    else if(m.Type==='authAccepted')send('startSession');
     else if(m.Type==='newSession')await presenterPeer(m.SessionID);
     else if(m.Type==='addCalleeIceCandidate')await addRemoteCandidate(m.Value);
     else if(m.Type==='gotAnswer'&&state.pc){await state.pc.setRemoteDescription(JSON.parse(m.Value));await flushRemoteCandidates();}
@@ -82,12 +79,14 @@ function displayToken() {
   const hash=new URLSearchParams(location.hash.replace(/^#/,'')); const token=hash.get('token')||localStorage.getItem(`display-token:${state.room.id}`)||'';
   if(token)localStorage.setItem(`display-token:${state.room.id}`,token); history.replaceState(null,'',location.pathname+location.search); return token;
 }
+function showDisplayCode(code) { el('kiosk-code').textContent=code; el('kiosk-help').textContent=''; }
+function showDisplayConnecting() { el('kiosk-code').textContent='------'; el('kiosk-help').textContent='Connecting to presenter…'; }
 function openDisplay(roomID) {
   const room=roomByID(roomID);if(!room){el('startup-error').hidden=false;el('startup-error').textContent='Unknown room.';return;}
   state.room=room;setRoomText();show('kiosk');document.body.classList.add('kiosk-display');
   const token=displayToken();if(!token){el('kiosk-help').textContent='Display enrollment token is missing. See the installation documentation.';return;}
   state.socket=new WebSocket(wsURL(`/ws_display?id=${encodeURIComponent(room.id)}`));state.socket.addEventListener('open',()=>send('auth',token));
-  state.socket.addEventListener('message',async event=>{let m;try{m=JSON.parse(event.data);}catch{return;}if(m.Type==='iceConfig'){applyICEConfig(m.Value);}else if(m.Type==='displayReady'){el('kiosk-code').textContent=m.SessionID;}else if(m.Type==='refreshCode'){el('kiosk-code').textContent=m.Value;}else if(m.Type==='newSession'){clearPeer();await displayPeer(m.SessionID);}else if(m.Type==='addCallerIceCandidate'){await addRemoteCandidate(m.Value);}else if(m.Type==='gotOffer'&&state.pc)await answerOffer(m.SessionID,JSON.parse(m.Value));else if(m.Type==='presenterClosed'){clearPeer();el('kiosk-code').textContent=m.Value;}else if(m.Type==='unauthorized'){el('kiosk-help').textContent='Display enrollment failed.';}});
+  state.socket.addEventListener('message',async event=>{let m;try{m=JSON.parse(event.data);}catch{return;}if(m.Type==='iceConfig'){applyICEConfig(m.Value);}else if(m.Type==='displayReady'){showDisplayCode(m.SessionID);}else if(m.Type==='refreshCode'){showDisplayConnecting();}else if(m.Type==='newSession'){clearPeer();showDisplayConnecting();await displayPeer(m.SessionID);}else if(m.Type==='addCallerIceCandidate'){await addRemoteCandidate(m.Value);}else if(m.Type==='gotOffer'&&state.pc)await answerOffer(m.SessionID,JSON.parse(m.Value));else if(m.Type==='presenterClosed'){clearPeer();showDisplayCode(m.Value);}else if(m.Type==='unauthorized'){el('kiosk-help').textContent='Display enrollment failed.';}});
 }
 async function displayPeer(sessionID) {
   state.pc=new RTCPeerConnection(iceOptions());state.stream=new MediaStream();el('video').srcObject=state.stream;

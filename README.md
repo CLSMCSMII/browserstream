@@ -21,35 +21,31 @@ git clone https://github.com/CLSMCSMII/browserstream.git
 cd browserstream
 ```
 
-### 2. Generate configuration
+### 2. Configure and deploy
 
 ```sh
-./install.sh --init-only
+./install.sh
 ```
 
-This creates `config.json` with random room/TURN secrets and automatically
-detects the LAN IPv4 address on the default-gateway network.
+The installer detects the LAN IP and asks:
 
-### 3. Edit `config.json`
-
-At minimum, replace `browserstream.example.com` in:
-
-- `public_url`
-- `allowed_origins`
-- `coturn.realm`
-
-Review `rooms`, then keep `display_token` and `turn.shared_secret` private.
-
-### 4. Start BrowserStream and coturn
-
-```sh
-BROWSERSTREAM_BIND_ADDRESS="$(python3 scripts/detect_lan_ip.py)" ./install.sh --with-turn
+```text
+Application name [AwareStream]:
+Public URL / allowed origin [https://browserstream.example.com]:
+Room ID [awmeeting]:
+Room label [Aware Building]:
+Install bundled coturn? [Y/n]:
+TURN realm [hostname from Public URL]:
+TURN URL [turn:<detected-IP>:3478]:
+coturn listening IP [<detected-IP>]:
+coturn relay IP [<detected-IP>]:
 ```
 
-The backend listens on `http://<LAN-IP>:18080`. Existing `config.json` files
-are never overwritten.
+Press **Enter** to accept a displayed default. `allowed_origins` is derived from
+the Public URL, random room/TURN secrets are generated, and the selected
+containers are deployed. Existing `config.json` files are never overwritten.
 
-### 5. Add HTTPS reverse proxy
+### 3. Add HTTPS reverse proxy
 
 Screen capture requires HTTPS. Example Nginx location:
 
@@ -84,16 +80,11 @@ the reverse proxy. TURN uses TCP/UDP `3478` and UDP `49160-49200`.
 docker compose run --rm --no-deps browserstream -validate-config
 
 # Stop and remove bundled coturn
-BROWSERSTREAM_BIND_ADDRESS="$(python3 scripts/detect_lan_ip.py)" ./install.sh --stop-turn
+./install.sh --stop-turn
 ```
 
-For a multi-homed server, use the same address for initialization and startup:
-
-```sh
-LAN_IP=192.168.1.10
-BROWSERSTREAM_LAN_IP="$LAN_IP" ./install.sh --init-only
-BROWSERSTREAM_BIND_ADDRESS="$LAN_IP" ./install.sh --with-turn
-```
+Use the listening and relay IP prompts to select an address on a multi-homed
+server. Use `./install.sh --init-only` to create configuration without deploying.
 
 If TURN is behind NAT, set `coturn.external_ip` in `config.json`. Never commit
 `config.json`, `coturn/turnserver.conf`, certificates, or private keys.

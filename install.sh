@@ -7,8 +7,7 @@ cd "$SCRIPT_DIR"
 CONFIG=${BROWSERSTREAM_CONFIG:-config.json}
 case "$CONFIG" in /*) ;; *) CONFIG="$SCRIPT_DIR/$CONFIG" ;; esac
 export BROWSERSTREAM_CONFIG="$CONFIG"
-BROWSERSTREAM_BIND_ADDRESS=${BROWSERSTREAM_BIND_ADDRESS:-172.16.10.18}
-export BROWSERSTREAM_BIND_ADDRESS
+BROWSERSTREAM_BIND_ADDRESS=${BROWSERSTREAM_BIND_ADDRESS:-}
 # Run the application container as a non-root UID/GID that can read the
 # mode-0600 bind-mounted configuration. Root installs use an unprivileged
 # numeric identity; non-root installs use the installing user's identity.
@@ -27,11 +26,12 @@ else
 fi
 export BROWSERSTREAM_UID BROWSERSTREAM_GID
 WITH_TURN=0
+WITH_TURN_FORCED=
 STOP_TURN=0
 INIT_ONLY=0
 for arg in "$@"; do
   case "$arg" in
-    --with-turn) WITH_TURN=1 ;;
+    --with-turn) WITH_TURN=1; WITH_TURN_FORCED=1 ;;
     --init-only) INIT_ONLY=1 ;;
     --stop-turn) STOP_TURN=1 ;;
     -h|--help) echo "Usage: ./install.sh [--with-turn|--stop-turn] [--init-only]"; exit 0 ;;
@@ -46,29 +46,7 @@ fi
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 if [ ! -f "$CONFIG" ]; then
   LAN_IP=$(python3 scripts/detect_lan_ip.py)
-  python3 - "$CONFIG" "$LAN_IP" <<'PY'
-import json,os,secrets,sys,tempfile
-p,lan_ip=sys.argv[1:3]
-with open('config.example.json',encoding='utf-8') as f: c=json.load(f)
-c['turn']['urls']=[f'turn:{lan_ip}:3478']
-c['turn']['shared_secret']=secrets.token_urlsafe(48)
-c['coturn']['listening_ip']=lan_ip
-c['coturn']['relay_ip']=lan_ip
-for room in c['rooms']: room['display_token']=secrets.token_urlsafe(32)
-directory=os.path.dirname(os.path.abspath(p))
-fd,tmp=tempfile.mkstemp(prefix='.browserstream-config-',dir=directory,text=True)
-try:
- os.fchmod(fd,0o600)
- with os.fdopen(fd,'w',encoding='utf-8') as f:
-  json.dump(c,f,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
- try:
-  os.link(tmp,p)
- except FileExistsError as exc:
-  raise SystemExit(f'Configuration already exists: {p}') from exc
-finally:
- try: os.unlink(tmp)
- except FileNotFoundError: pass
-PY
+  WITH_TURN=$(python3 scripts/configure.py "$CONFIG" "$LAN_IP" "$WITH_TURN_FORCED")
   echo "Created $CONFIG with LAN IPv4 $LAN_IP and random secrets."
 else
   echo "Using existing $CONFIG (not overwritten)."
@@ -77,6 +55,19 @@ chmod 600 "$CONFIG"
 if [ "$HOST_UID" -eq 0 ]; then
   chown "$BROWSERSTREAM_UID:$BROWSERSTREAM_GID" "$CONFIG"
 fi
+
+if [ -z "$BROWSERSTREAM_BIND_ADDRESS" ]; then
+  BROWSERSTREAM_BIND_ADDRESS=$(python3 - "$CONFIG" <<'PY'
+import json,sys
+with open(sys.argv[1],encoding='utf-8') as f: c=json.load(f)
+print(c.get('coturn',{}).get('listening_ip',''))
+PY
+)
+fi
+if [ -z "$BROWSERSTREAM_BIND_ADDRESS" ]; then
+  BROWSERSTREAM_BIND_ADDRESS=$(python3 scripts/detect_lan_ip.py)
+fi
+export BROWSERSTREAM_BIND_ADDRESS
 
 python3 - "$CONFIG" coturn/turnserver.conf "$WITH_TURN" <<'PY'
 import json,sys
@@ -98,7 +89,11 @@ PY
 chmod 600 coturn/turnserver.conf
 
 if [ "$INIT_ONLY" -eq 1 ]; then
-  echo "Initialization complete. Edit $CONFIG, then run ./install.sh."
+  if [ "$WITH_TURN" -eq 1 ]; then
+    echo "Initialization complete. Run ./install.sh --with-turn to deploy."
+  else
+    echo "Initialization complete. Run ./install.sh to deploy."
+  fi
   exit 0
 fi
 command -v docker >/dev/null 2>&1 || { echo "Docker with the Compose plugin is required" >&2; exit 1; }

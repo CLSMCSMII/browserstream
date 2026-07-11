@@ -80,7 +80,7 @@ jobs:
           c = json.load(open('/tmp/browserstream-config.json'))
           lan_ip = os.environ['DETECTED_LAN_IP']
           assert c['public_url'] == 'https://browserstream.example.com'
-          assert [r['id'] for r in c['rooms']] == ['awmeeting', 'smmeeting']
+          assert [r['id'] for r in c['rooms']] == ['awmeeting']
           assert all(len(r['display_token']) >= 32 for r in c['rooms'])
           assert c['turn']['urls'] == [f'turn:{lan_ip}:3478']
           assert c['allowed_origins'] == ['https://browserstream.example.com']

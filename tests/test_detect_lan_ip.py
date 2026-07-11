@@ -141,6 +141,191 @@ class ValidateOverrideTests(unittest.TestCase):
 
 
 class InstallerAtomicCreationTests(unittest.TestCase):
+    @staticmethod
+    def copy_installer(root):
+        source = Path(__file__).resolve().parents[1]
+        shutil.copy2(source / "install.sh", root / "install.sh")
+        shutil.copy2(source / "config.example.json", root / "config.example.json")
+        shutil.copytree(source / "scripts", root / "scripts")
+        (root / "coturn").mkdir()
+
+    @staticmethod
+    def installer_environment(root, lan_ip="192.0.2.10"):
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "BROWSERSTREAM_CONFIG": str(root / "config.json"),
+                "BROWSERSTREAM_LAN_IP": lan_ip,
+            }
+        )
+        return environment
+
+    def test_interactive_answers_generate_complete_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+            answers = "\n".join(
+                (
+                    "Meeting Room",
+                    "https://meeting.example.com/",
+                    "main-room",
+                    "Main Meeting Room",
+                    "n",
+                    "turn.example.com",
+                    "turn:198.51.100.20:3478",
+                    "198.51.100.20",
+                    "198.51.100.21",
+                    "",
+                )
+            )
+
+            subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=self.installer_environment(root),
+                input=answers,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            generated = json.loads((root / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(generated["app_name"], "Meeting Room")
+            self.assertEqual(generated["public_url"], "https://meeting.example.com")
+            self.assertEqual(generated["allowed_origins"], ["https://meeting.example.com"])
+            self.assertEqual(len(generated["rooms"]), 1)
+            self.assertEqual(generated["rooms"][0]["id"], "main-room")
+            self.assertEqual(generated["rooms"][0]["label"], "Main Meeting Room")
+            self.assertGreaterEqual(len(generated["rooms"][0]["display_token"]), 32)
+            self.assertEqual(generated["turn"]["urls"], ["turn:198.51.100.20:3478"])
+            self.assertGreaterEqual(len(generated["turn"]["shared_secret"]), 48)
+            self.assertEqual(generated["coturn"]["realm"], "turn.example.com")
+            self.assertEqual(generated["coturn"]["listening_ip"], "198.51.100.20")
+            self.assertEqual(generated["coturn"]["relay_ip"], "198.51.100.21")
+
+    def test_enter_accepts_all_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+
+            subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=self.installer_environment(root),
+                input="\n" * 9,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            generated = json.loads((root / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(generated["app_name"], "AwareStream")
+            self.assertEqual(generated["public_url"], "https://browserstream.example.com")
+            self.assertEqual(generated["allowed_origins"], ["https://browserstream.example.com"])
+            self.assertEqual(
+                [(room["id"], room["label"]) for room in generated["rooms"]],
+                [("awmeeting", "Aware Building")],
+            )
+            self.assertEqual(generated["turn"]["urls"], ["turn:192.0.2.10:3478"])
+            self.assertEqual(generated["coturn"]["realm"], "browserstream.example.com")
+            self.assertEqual(generated["coturn"]["listening_ip"], "192.0.2.10")
+            self.assertEqual(generated["coturn"]["relay_ip"], "192.0.2.10")
+
+    def test_invalid_answer_is_reprompted_before_config_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+            answers = "\n\nINVALID ROOM\nvalid-room\n\n\n\n\n\n\n"
+
+            completed = subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=self.installer_environment(root),
+                input=answers,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+
+            self.assertIn("Invalid value:", completed.stderr)
+            generated = json.loads((root / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(generated["rooms"][0]["id"], "valid-room")
+
+    def test_plain_install_uses_interactive_coturn_choice(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            docker_log = root / "docker.log"
+            fake_docker = fake_bin / "docker"
+            fake_docker.write_text(
+                "#!/bin/sh\nprintf '%s %s\\n' \"$BROWSERSTREAM_BIND_ADDRESS\" \"$*\" >> \"$DOCKER_LOG\"\n",
+                encoding="utf-8",
+            )
+            fake_docker.chmod(0o755)
+            environment = self.installer_environment(root)
+            environment.update(
+                {
+                    "DOCKER_LOG": str(docker_log),
+                    "PATH": f"{fake_bin}:{environment['PATH']}",
+                }
+            )
+
+            subprocess.run(
+                ["sh", "install.sh"],
+                cwd=root,
+                env=environment,
+                input="\n" * 9,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            calls = docker_log.read_text(encoding="utf-8")
+            self.assertIn("192.0.2.10 compose --profile turn up -d", calls)
+
+    def test_plain_install_can_skip_bundled_coturn(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            docker_log = root / "docker.log"
+            fake_docker = fake_bin / "docker"
+            fake_docker.write_text(
+                "#!/bin/sh\nprintf '%s %s\\n' \"$BROWSERSTREAM_BIND_ADDRESS\" \"$*\" >> \"$DOCKER_LOG\"\n",
+                encoding="utf-8",
+            )
+            fake_docker.chmod(0o755)
+            environment = self.installer_environment(root)
+            environment.update(
+                {
+                    "DOCKER_LOG": str(docker_log),
+                    "PATH": f"{fake_bin}:{environment['PATH']}",
+                }
+            )
+            answers = "\n\n\n\nn\n\n\n\n\n"
+
+            subprocess.run(
+                ["sh", "install.sh"],
+                cwd=root,
+                env=environment,
+                input=answers,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            calls = docker_log.read_text(encoding="utf-8")
+            self.assertIn("192.0.2.10 compose up -d browserstream", calls)
+            self.assertNotIn("--profile turn up -d", calls)
+
     def test_failed_generation_does_not_leave_final_config(self):
         source = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:

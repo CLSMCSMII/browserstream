@@ -5,6 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_JS = ROOT / "files" / "static" / "main.js"
+MAIN_HTML = ROOT / "files" / "main.html"
+MAIN_CSS = ROOT / "files" / "static" / "main.css"
 
 
 def function_body(source, name):
@@ -51,6 +53,19 @@ class PresenterFlowRegressionTests(unittest.TestCase):
             "m.Type==='refreshCode'){el('kiosk-code').textContent=m.Value",
             self.source,
         )
+
+    def test_kiosk_shows_room_label_between_brand_and_public_url(self):
+        html = MAIN_HTML.read_text(encoding="utf-8")
+        css = MAIN_CSS.read_text(encoding="utf-8")
+
+        brand = html.index('id="kiosk-brand"')
+        location = html.index('id="kiosk-location"')
+        public_url = html.index('id="public-url"')
+        self.assertLess(brand, location)
+        self.assertLess(location, public_url)
+        self.assertIn('Location: <span id="kiosk-location"></span>', html)
+        self.assertIn("el('kiosk-location').textContent = state.room ? state.room.label : '';", self.source)
+        self.assertRegex(css, r"(?s)\.kiosk-location\s*\{[^}]*font-size:")
 
 
 if __name__ == "__main__":

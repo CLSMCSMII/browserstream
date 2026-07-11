@@ -15,7 +15,7 @@ function iceOptions() { return {iceServers: state.config.ice_servers || [], iceT
 function applyICEConfig(value){const c=JSON.parse(value);state.config.ice_servers=c.ice_servers||[];state.config.ice_transport_policy=c.ice_transport_policy||'all';}
 async function addRemoteCandidate(value){const candidate=JSON.parse(value);if(state.pc&&state.pc.remoteDescription)await state.pc.addIceCandidate(candidate);else state.pendingCandidates.push(candidate);}
 async function flushRemoteCandidates(){while(state.pc&&state.pc.remoteDescription&&state.pendingCandidates.length)await state.pc.addIceCandidate(state.pendingCandidates.shift());}
-function setRoomText() { el('room-text').textContent = state.room ? state.room.label : ''; }
+function setRoomText() { el('room-text').textContent = state.room ? state.room.label : ''; el('kiosk-location').textContent = state.room ? state.room.label : ''; }
 function clearPeer() { state.pendingCandidates=[]; if(state.pc){state.pc.close();state.pc=null;} if(state.stream){state.stream.getTracks().forEach(t=>t.stop());state.stream=null;} el('video').srcObject=null; document.body.classList.remove('playing'); }
 
 async function loadConfig() {

@@ -51,8 +51,8 @@ jobs:
           assert "const PRODUCT_NAME = 'AwareStream';" in js
           assert "const KIOSK_NAME = 'AwareStreaming';" in js
           assert 'kiosk-instruction' not in html
-          assert '/static/main.css?v=3' in html
-          assert '/static/main.js?v=5' in html
+          assert '/static/main.css?v=4' in html
+          assert '/static/main.js?v=6' in html
           assert 'body.kiosk-display #kiosk::before' in css
           assert 'BrowserStream' not in html
           assert 'QRCode' not in js and "el('qrcode')" not in js

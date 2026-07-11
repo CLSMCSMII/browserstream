@@ -102,7 +102,7 @@ jobs:
             exit 1
           fi
           test ! -e /tmp/browserstream-mismatch-config.json
-          sudo env BROWSERSTREAM_LAN_IP=192.0.2.10 BROWSERSTREAM_CONFIG=/tmp/browserstream-root-config.json ./install.sh --init-only
+          sudo env BROWSERSTREAM_LAN_IP=192.0.2.10 BROWSERSTREAM_CONFIG=/tmp/browserstream-root-config.json BROWSERSTREAM_UID=65532 BROWSERSTREAM_GID=65532 ./install.sh --init-only
           test "$(stat -c %u /tmp/browserstream-root-config.json)" = 65532
           test "$(stat -c %g /tmp/browserstream-root-config.json)" = 65532
           sudo rm -f /tmp/browserstream-root-config.json coturn/turnserver.conf .env

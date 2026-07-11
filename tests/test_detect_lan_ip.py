@@ -292,10 +292,12 @@ class InstallerAtomicCreationTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
+            override_environment = self.installer_environment(root)
+            override_environment["BROWSERSTREAM_BIND_ADDRESS"] = "192.0.2.10"
             subprocess.run(
                 ["sh", "install.sh", "--init-only"],
                 cwd=root,
-                env=self.installer_environment(root),
+                env=override_environment,
                 input="\n" * 9,
                 text=True,
                 stdout=subprocess.DEVNULL,
@@ -328,8 +330,120 @@ class InstallerAtomicCreationTests(unittest.TestCase):
             )
 
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("Refusing to replace symlink", completed.stderr)
+            self.assertIn("Refusing to use symlink", completed.stderr)
             self.assertEqual(target.read_text(encoding="utf-8"), "DO_NOT_CHANGE=yes\n")
+
+    def test_installer_rerun_uses_persisted_config_port_and_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+            custom_config = root / "custom-config.json"
+            first_environment = self.installer_environment(root)
+            first_environment.update(
+                {
+                    "BROWSERSTREAM_CONFIG": str(custom_config),
+                    "BROWSERSTREAM_PORT": "19090",
+                }
+            )
+
+            subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=first_environment,
+                input="\n" * 9,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+            before = custom_config.read_bytes()
+
+            rerun_environment = self.installer_environment(root)
+            for key in (
+                "BROWSERSTREAM_CONFIG",
+                "BROWSERSTREAM_BIND_ADDRESS",
+                "BROWSERSTREAM_PORT",
+                "BROWSERSTREAM_UID",
+                "BROWSERSTREAM_GID",
+            ):
+                rerun_environment.pop(key, None)
+            subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=rerun_environment,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            values = dict(
+                line.split("=", 1)
+                for line in (root / ".env").read_text(encoding="utf-8").splitlines()
+            )
+            self.assertEqual(values["BROWSERSTREAM_CONFIG"], str(custom_config))
+            self.assertEqual(values["BROWSERSTREAM_PORT"], "19090")
+            self.assertEqual(values["BROWSERSTREAM_UID"], str(os.getuid()))
+            self.assertEqual(values["BROWSERSTREAM_GID"], str(os.getgid()))
+            self.assertEqual(custom_config.read_bytes(), before)
+            self.assertFalse((root / "config.json").exists())
+
+    def test_explicit_environment_overrides_persisted_value(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+            first_environment = self.installer_environment(root)
+            first_environment["BROWSERSTREAM_PORT"] = "19090"
+            subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=first_environment,
+                input="\n" * 9,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            override_environment = self.installer_environment(root)
+            override_environment["BROWSERSTREAM_PORT"] = "19091"
+            subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=override_environment,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+
+            self.assertIn(
+                "BROWSERSTREAM_PORT=19091",
+                (root / ".env").read_text(encoding="utf-8").splitlines(),
+            )
+
+    def test_installer_rejects_dotenv_significant_managed_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.copy_installer(root)
+            environment = self.installer_environment(root)
+            environment["BROWSERSTREAM_PORT"] = "18080 # ambiguous"
+
+            completed = subprocess.run(
+                ["sh", "install.sh", "--init-only"],
+                cwd=root,
+                env=environment,
+                input="\n" * 9,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("unsupported dotenv characters", completed.stderr)
+            self.assertFalse((root / ".env").exists())
+            self.assertFalse((root / "config.json").exists())
 
     def test_plain_install_uses_interactive_coturn_choice(self):
         with tempfile.TemporaryDirectory() as directory:

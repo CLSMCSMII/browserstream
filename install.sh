@@ -4,10 +4,49 @@ umask 077
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 cd "$SCRIPT_DIR"
+command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
+[ ! -L .env ] || { echo "Refusing to use symlink: $SCRIPT_DIR/.env" >&2; exit 1; }
+if [ -e .env ] && [ ! -f .env ]; then
+  echo "Refusing to use non-regular file: $SCRIPT_DIR/.env" >&2
+  exit 1
+fi
+persisted_value() {
+  python3 - .env "$1" <<'PY'
+import os
+import re
+import stat
+import sys
+
+path, wanted = sys.argv[1:]
+try:
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+except FileNotFoundError:
+    raise SystemExit(0)
+value = None
+if not stat.S_ISREG(os.fstat(fd).st_mode):
+    os.close(fd)
+    raise SystemExit(f"refusing non-regular dotenv file: {path}")
+with os.fdopen(fd, encoding="utf-8") as source:
+    for line in source:
+        key, separator, candidate = line.rstrip("\n").partition("=")
+        if separator and key.strip() == wanted:
+            value = candidate
+if value is not None:
+    if not value or not re.fullmatch(r"[A-Za-z0-9_./:@+-]+", value):
+        raise SystemExit(f"unsupported dotenv characters in persisted {wanted}")
+    print(value)
+PY
+}
+if [ -z "${BROWSERSTREAM_CONFIG+x}" ]; then BROWSERSTREAM_CONFIG=$(persisted_value BROWSERSTREAM_CONFIG); fi
+if [ -z "${BROWSERSTREAM_BIND_ADDRESS+x}" ]; then BROWSERSTREAM_BIND_ADDRESS=$(persisted_value BROWSERSTREAM_BIND_ADDRESS); fi
+if [ -z "${BROWSERSTREAM_PORT+x}" ]; then BROWSERSTREAM_PORT=$(persisted_value BROWSERSTREAM_PORT); fi
+if [ -z "${BROWSERSTREAM_UID+x}" ]; then BROWSERSTREAM_UID=$(persisted_value BROWSERSTREAM_UID); fi
+if [ -z "${BROWSERSTREAM_GID+x}" ]; then BROWSERSTREAM_GID=$(persisted_value BROWSERSTREAM_GID); fi
 CONFIG=${BROWSERSTREAM_CONFIG:-config.json}
 case "$CONFIG" in /*) ;; *) CONFIG="$SCRIPT_DIR/$CONFIG" ;; esac
 export BROWSERSTREAM_CONFIG="$CONFIG"
 BROWSERSTREAM_BIND_ADDRESS=${BROWSERSTREAM_BIND_ADDRESS:-}
+BROWSERSTREAM_PORT=${BROWSERSTREAM_PORT:-18080}
 # Run the application container as a non-root UID/GID that can read the
 # mode-0600 bind-mounted configuration. Root installs use an unprivileged
 # numeric identity; non-root installs use the installing user's identity.
@@ -25,6 +64,17 @@ else
   fi
 fi
 export BROWSERSTREAM_UID BROWSERSTREAM_GID
+python3 - "$CONFIG" "$BROWSERSTREAM_PORT" "$BROWSERSTREAM_UID" "$BROWSERSTREAM_GID" <<'PY'
+import re
+import sys
+
+for key, value in zip(
+    ("BROWSERSTREAM_CONFIG", "BROWSERSTREAM_PORT", "BROWSERSTREAM_UID", "BROWSERSTREAM_GID"),
+    sys.argv[1:],
+):
+    if not value or not re.fullmatch(r"[A-Za-z0-9_./:@+-]+", value):
+        raise SystemExit(f"unsupported dotenv characters in {key}")
+PY
 WITH_TURN=0
 WITH_TURN_FORCED=
 STOP_TURN=0
@@ -49,7 +99,6 @@ if [ "$ADD_ROOM" -eq 1 ] && { [ "$WITH_TURN" -eq 1 ] || [ "$STOP_TURN" -eq 1 ]; 
   exit 2
 fi
 
-command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 if [ "$ADD_ROOM" -eq 1 ]; then
   if [ ! -f "$CONFIG" ]; then
     echo "--add-room requires an existing configuration: $CONFIG" >&2
@@ -81,15 +130,15 @@ if [ -z "$BROWSERSTREAM_BIND_ADDRESS" ]; then
   BROWSERSTREAM_BIND_ADDRESS=$(python3 scripts/detect_lan_ip.py)
 fi
 export BROWSERSTREAM_BIND_ADDRESS
-BROWSERSTREAM_PORT=${BROWSERSTREAM_PORT:-18080}
 export BROWSERSTREAM_PORT
 
 # Persist Compose interpolation values so later direct Compose commands use the
 # same bind address and unprivileged configuration owner as the installer.
 # Preserve unrelated operator-managed .env entries.
-[ ! -L .env ] || { echo "Refusing to replace symlink: $SCRIPT_DIR/.env" >&2; exit 1; }
 python3 - .env "$BROWSERSTREAM_BIND_ADDRESS" "$BROWSERSTREAM_PORT" "$BROWSERSTREAM_UID" "$BROWSERSTREAM_GID" "$CONFIG" <<'PY'
 import os
+import re
+import stat
 import sys
 import tempfile
 
@@ -103,14 +152,18 @@ managed = {
 }
 lines = []
 if os.path.exists(path):
-    with open(path, encoding="utf-8") as source:
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise SystemExit(f"refusing non-regular dotenv file: {path}")
+    with os.fdopen(fd, encoding="utf-8") as source:
         for line in source:
             key = line.split("=", 1)[0].strip()
             if key not in managed:
                 lines.append(line.rstrip("\n"))
 for key, value in managed.items():
-    if "\n" in value or "\r" in value:
-        raise SystemExit(f"invalid newline in {key}")
+    if not value or not re.fullmatch(r"[A-Za-z0-9_./:@+-]+", value):
+        raise SystemExit(f"unsupported dotenv characters in {key}")
     lines.append(f"{key}={value}")
 directory = os.path.dirname(os.path.abspath(path))
 fd, temporary = tempfile.mkstemp(prefix=".env.tmp-", dir=directory, text=True)
@@ -121,6 +174,11 @@ try:
         os.fsync(target.fileno())
     os.chmod(temporary, 0o600)
     os.replace(temporary, path)
+    directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
 finally:
     if os.path.exists(temporary):
         os.unlink(temporary)

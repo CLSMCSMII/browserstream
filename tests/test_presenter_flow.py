@@ -54,6 +54,25 @@ class PresenterFlowRegressionTests(unittest.TestCase):
             self.source,
         )
 
+    def test_presenter_can_choose_audio_and_control_transmitted_volume(self):
+        html = MAIN_HTML.read_text(encoding="utf-8")
+
+        self.assertIn('id="share-audio"', html)
+        self.assertIn('id="audio-volume"', html)
+        self.assertIn("audio:shareAudio", self.source)
+        self.assertIn("createGain()", self.source)
+        self.assertIn("gain.value", self.source)
+        self.assertIn("getAudioTracks()", self.source)
+
+    def test_kiosk_attempts_audible_playback_with_manual_fallback(self):
+        html = MAIN_HTML.read_text(encoding="utf-8")
+
+        self.assertRegex(html, r'<video id="video"(?![^>]*\bmuted\b)[^>]*>')
+        self.assertIn('id="enable-audio"', html)
+        self.assertIn("video.muted=false", self.source)
+        self.assertIn("video.muted=true", self.source)
+        self.assertIn("el('enable-audio').hidden=false", self.source)
+
     def test_kiosk_shows_room_label_between_brand_and_public_url(self):
         html = MAIN_HTML.read_text(encoding="utf-8")
         css = MAIN_CSS.read_text(encoding="utf-8")

@@ -2,7 +2,7 @@
 
 const PRODUCT_NAME = 'AwareStream';
 const KIOSK_NAME = 'AwareStream';
-const state = {config:null, room:null, socket:null, pc:null, stream:null, debug:false, pendingCandidates:[]};
+const state = {config:null, room:null, socket:null, pc:null, stream:null, captureStream:null, audioContext:null, audioGain:null, debug:false, pendingCandidates:[]};
 const el = id => document.getElementById(id);
 const show = id => { ['home','presenter','kiosk'].forEach(x => el(x).hidden = x !== id); };
 const roomByID = id => state.config.rooms.find(r => r.id === id);
@@ -16,7 +16,31 @@ function applyICEConfig(value){const c=JSON.parse(value);state.config.ice_server
 async function addRemoteCandidate(value){const candidate=JSON.parse(value);if(state.pc&&state.pc.remoteDescription)await state.pc.addIceCandidate(candidate);else state.pendingCandidates.push(candidate);}
 async function flushRemoteCandidates(){while(state.pc&&state.pc.remoteDescription&&state.pendingCandidates.length)await state.pc.addIceCandidate(state.pendingCandidates.shift());}
 function setRoomText() { el('room-text').textContent = state.room ? state.room.label : ''; el('kiosk-location').textContent = state.room ? state.room.label : ''; }
-function clearPeer() { state.pendingCandidates=[]; if(state.pc){state.pc.close();state.pc=null;} if(state.stream){state.stream.getTracks().forEach(t=>t.stop());state.stream=null;} el('video').srcObject=null; document.body.classList.remove('playing'); }
+function stopMedia() {
+  if(state.stream){state.stream.getTracks().forEach(t=>t.stop());state.stream=null;}
+  if(state.captureStream){state.captureStream.getTracks().forEach(t=>t.stop());state.captureStream=null;}
+  if(state.audioContext){state.audioContext.close().catch(()=>{});state.audioContext=null;}
+  state.audioGain=null;
+}
+function clearPeer() { state.pendingCandidates=[];if(state.pc){state.pc.close();state.pc=null;}stopMedia();el('video').srcObject=null;el('enable-audio').hidden=true;document.body.classList.remove('playing'); }
+
+async function prepareOutgoingStream(captured, shareAudio, volume) {
+  state.captureStream=captured;
+  const outgoing=new MediaStream(captured.getVideoTracks());
+  const audioTracks=captured.getAudioTracks();
+  if(!shareAudio||audioTracks.length===0)return outgoing;
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass){audioTracks.forEach(track=>outgoing.addTrack(track));return outgoing;}
+  state.audioContext=new AudioContextClass();
+  const source=state.audioContext.createMediaStreamSource(new MediaStream(audioTracks));
+  state.audioGain=state.audioContext.createGain();
+  const destination=state.audioContext.createMediaStreamDestination();
+  state.audioGain.gain.value=volume;
+  source.connect(state.audioGain).connect(destination);
+  destination.stream.getAudioTracks().forEach(track=>outgoing.addTrack(track));
+  if(state.audioContext.state==='suspended')await state.audioContext.resume();
+  return outgoing;
+}
 
 async function loadConfig() {
   const response = await fetch('/api/config',{cache:'no-store'});
@@ -37,7 +61,7 @@ function openPresenter(roomID) {
 }
 
 function presenterFailure(message) {
-  if (state.stream) { state.stream.getTracks().forEach(track=>track.stop()); state.stream=null; }
+  stopMedia();
   if (state.socket) { state.socket.close(); state.socket=null; }
   el('start-share').disabled=false;
   document.body.classList.remove('presenter-mode','playing');
@@ -48,9 +72,12 @@ async function startSharing() {
   const code=el('verification-code').value.trim().toUpperCase();
   if(!/^[A-Z0-9]{6}$/.test(code))return fail('Enter the six-character code shown on the display.');
   el('start-share').disabled=true;
-  try { state.stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true}); }
+  const shareAudio=el('share-audio').checked;
+  const volume=Number(el('audio-volume').value)/100;
+  let captured;
+  try { captured=await navigator.mediaDevices.getDisplayMedia({video:true,audio:shareAudio});state.stream=await prepareOutgoingStream(captured,shareAudio,volume); }
   catch(e){ return presenterFailure(`Screen capture failed: ${e.message||e}`); }
-  el('video').srcObject=state.stream; show('kiosk'); document.body.classList.add('presenter-mode','playing');
+  el('video').muted=true;el('video').srcObject=state.stream;el('stream-audio-enabled').checked=shareAudio;el('stream-audio-volume').value=el('audio-volume').value;el('stream-audio-volume-value').textContent=`${el('audio-volume').value}%`;show('kiosk');document.body.classList.add('presenter-mode','playing');
   state.stream.getVideoTracks().forEach(t=>t.addEventListener('ended',()=>location.assign(baseURL())));
   state.socket=new WebSocket(wsURL(`/ws_present?id=${encodeURIComponent(state.room.id)}`));
   state.socket.addEventListener('open',()=>send('auth',code));
@@ -89,12 +116,18 @@ function openDisplay(roomID) {
   state.socket.addEventListener('message',async event=>{let m;try{m=JSON.parse(event.data);}catch{return;}if(m.Type==='iceConfig'){applyICEConfig(m.Value);}else if(m.Type==='displayReady'){showDisplayCode(m.SessionID);}else if(m.Type==='refreshCode'){showDisplayConnecting();}else if(m.Type==='newSession'){clearPeer();showDisplayConnecting();await displayPeer(m.SessionID);}else if(m.Type==='addCallerIceCandidate'){await addRemoteCandidate(m.Value);}else if(m.Type==='gotOffer'&&state.pc)await answerOffer(m.SessionID,JSON.parse(m.Value));else if(m.Type==='presenterClosed'){clearPeer();showDisplayCode(m.Value);}else if(m.Type==='unauthorized'){el('kiosk-help').textContent='Display enrollment failed.';}});
 }
 async function displayPeer(sessionID) {
-  state.pc=new RTCPeerConnection(iceOptions());state.stream=new MediaStream();el('video').srcObject=state.stream;
+  state.pc=new RTCPeerConnection(iceOptions());state.stream=new MediaStream();const video=el('video');video.muted=false;video.srcObject=state.stream;
   state.pc.onicecandidate=e=>{if(e.candidate)send('addCalleeIceCandidate',JSON.stringify(e.candidate),sessionID);};
-  state.pc.ontrack=e=>{state.stream.addTrack(e.track);el('video').play().then(()=>document.body.classList.add('playing')).catch(err=>log(`autoplay: ${err}`));e.track.addEventListener('ended',()=>{if(e.track.kind==='video')clearPeer();});};
+  state.pc.ontrack=e=>{state.stream.addTrack(e.track);video.play().then(()=>{document.body.classList.add('playing');el('enable-audio').hidden=true;}).catch(err=>{log(`audible autoplay blocked: ${err}`);video.muted=true;video.play().then(()=>document.body.classList.add('playing')).catch(playErr=>log(`autoplay: ${playErr}`));el('enable-audio').hidden=false;});e.track.addEventListener('ended',()=>{if(e.track.kind==='video')clearPeer();});};
 }
 async function answerOffer(sessionID,offer){await state.pc.setRemoteDescription(offer);await flushRemoteCandidates();const answer=await state.pc.createAnswer();await state.pc.setLocalDescription(answer);send('gotAnswer',JSON.stringify(answer),sessionID);}
 
 function route(){const u=new URL(location.href);if(u.pathname.startsWith('/room/'))return openDisplay(decodeURIComponent(u.pathname.slice(6)));if(u.searchParams.get('present')==='1')return openPresenter(u.searchParams.get('room'));show('home');}
-el('verification-code').addEventListener('input',e=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);});el('start-share').addEventListener('click',startSharing);document.querySelectorAll('.cancel').forEach(b=>b.addEventListener('click',()=>location.assign(baseURL())));
+el('verification-code').addEventListener('input',e=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);});
+el('share-audio').addEventListener('change',e=>{el('audio-volume').disabled=!e.target.checked;});
+el('audio-volume').addEventListener('input',e=>{el('audio-volume-value').textContent=`${e.target.value}%`;});
+el('stream-audio-enabled').addEventListener('change',e=>{state.stream?.getAudioTracks().forEach(track=>track.enabled=e.target.checked);});
+el('stream-audio-volume').addEventListener('input',e=>{const value=Number(e.target.value)/100;if(state.audioGain)state.audioGain.gain.value=value;el('stream-audio-volume-value').textContent=`${e.target.value}%`;});
+el('enable-audio').addEventListener('click',()=>{const video=el('video');video.muted=false;video.play().then(()=>{el('enable-audio').hidden=true;}).catch(err=>log(`enable audio: ${err}`));});
+el('start-share').addEventListener('click',startSharing);document.querySelectorAll('.cancel').forEach(b=>b.addEventListener('click',()=>location.assign(baseURL())));
 loadConfig().then(route).catch(err=>{el('startup-error').hidden=false;el('startup-error').textContent=err.message;});

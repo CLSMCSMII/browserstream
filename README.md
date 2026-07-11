@@ -127,7 +127,10 @@ the reverse proxy. TURN uses TCP/UDP `3478` and UDP `49160-49200`.
    `https://YOUR-DOMAIN/room/ROOM_ID#token=DISPLAY_TOKEN`.
 2. The display stores the token locally and shows a six-character code.
 3. On a desktop computer, open `https://YOUR-DOMAIN`.
-4. Select the room, enter its code, and choose a screen or window.
+4. Select the room, enter its code, choose whether to share audio, and choose a screen or window.
+5. When sharing audio, enable tab or system audio in the browser capture dialog. The presenter can mute it or adjust the transmitted volume while sharing.
+
+Audio capture availability depends on the presenter browser, operating system, and selected capture source. Browser tabs are the most consistently supported source. If the display browser blocks audible autoplay, BrowserStream shows an **Enable audio** button; managed kiosks can instead allow autoplay through their browser policy.
 
 ## Generate a kiosk URL
 

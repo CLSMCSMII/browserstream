@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#7a1822">
   <title>AwareStream</title>
   <link rel="stylesheet" href="/static/bootstrap.min.css">
-  <link rel="stylesheet" href="/static/main.css?v=4">
+  <link rel="stylesheet" href="/static/main.css?v=5">
 </head>
 <body>
 <nav class="navbar">
@@ -28,6 +28,12 @@
     <p class="help-text">Enter the six-character verification code shown on the meeting room display.</p>
     <label for="verification-code">Verification code</label>
     <input id="verification-code" class="form-control verify-input" type="text" maxlength="6" autocomplete="off" spellcheck="false" inputmode="text" placeholder="ABC123">
+    <div class="audio-options">
+      <label class="audio-toggle"><input id="share-audio" type="checkbox" checked> Share screen audio</label>
+      <label for="audio-volume">Audio volume: <span id="audio-volume-value">100%</span></label>
+      <input id="audio-volume" type="range" min="0" max="100" value="100">
+      <p class="audio-help">Also enable tab or system audio in the browser sharing dialog when available.</p>
+    </div>
     <div class="presenter-actions">
       <button id="start-share" class="btn btn-dark" type="button">Start sharing</button>
       <button class="btn btn-outline-dark cancel" type="button">Cancel</button>
@@ -43,10 +49,17 @@
       <p id="kiosk-help" aria-live="polite"></p>
     </div>
     <!-- [html-validate-disable-next no-autoplay] -->
-    <video id="video" autoplay playsinline muted>Shared presentation</video>
+    <video id="video" autoplay playsinline>Shared presentation</video>
+    <div id="presenter-audio-toolbar" class="presenter-audio-toolbar">
+      <label><input id="stream-audio-enabled" type="checkbox" checked> Audio</label>
+      <label for="stream-audio-volume">Volume</label>
+      <input id="stream-audio-volume" type="range" min="0" max="100" value="100">
+      <span id="stream-audio-volume-value">100%</span>
+    </div>
+    <button id="enable-audio" class="btn btn-dark enable-audio" type="button" hidden>Enable audio</button>
   </section>
 </main>
 <pre id="debug" hidden></pre>
-<script src="/static/main.js?v=6"></script>
+<script src="/static/main.js?v=7"></script>
 </body>
 </html>

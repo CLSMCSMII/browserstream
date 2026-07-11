@@ -52,7 +52,7 @@ jobs:
           assert "const KIOSK_NAME = 'AwareStreaming';" in js
           assert 'kiosk-instruction' not in html
           assert '/static/main.css?v=3' in html
-          assert '/static/main.js?v=4' in html
+          assert '/static/main.js?v=5' in html
           assert 'body.kiosk-display #kiosk::before' in css
           assert 'BrowserStream' not in html
           assert 'QRCode' not in js and "el('qrcode')" not in js
@@ -105,7 +105,7 @@ jobs:
           sudo env BROWSERSTREAM_LAN_IP=192.0.2.10 BROWSERSTREAM_CONFIG=/tmp/browserstream-root-config.json ./install.sh --init-only
           test "$(stat -c %u /tmp/browserstream-root-config.json)" = 65532
           test "$(stat -c %g /tmp/browserstream-root-config.json)" = 65532
-          sudo rm -f /tmp/browserstream-root-config.json coturn/turnserver.conf
+          sudo rm -f /tmp/browserstream-root-config.json coturn/turnserver.conf .env
       - name: Compose validation and hardening assertions
         run: |
           cp config.example.json config.json

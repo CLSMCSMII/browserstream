@@ -89,16 +89,33 @@ on a LAN IP.
 Screen capture requires HTTPS. Example Nginx location:
 
 ```nginx
-location / {
-    proxy_pass http://LAN-IP:18080;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_read_timeout 120s;
+server {
+    listen 80;
+    server_name browserstream.example.com;
+    return 308 https://$host$request_uri;
 }
+
+server {
+    listen 443 ssl http2;
+    server_name browserstream.example.com;
+
+    ssl_certificate /etc/ssl/certs/cert.pem;
+    ssl_certificate_key /etc/ssl/private/cert.key;
+
+    location / {
+        proxy_pass http://LAN-IP:18080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+
 ```
 
 Replace `LAN-IP` with the detected server address. Allow TCP `18080` only from

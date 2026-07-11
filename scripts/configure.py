@@ -8,8 +8,9 @@ import re
 import secrets
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from detect_lan_ip import validate_override
 
@@ -29,8 +30,9 @@ def ask(label, default, validator):
                 raise
 
 
-def ask_yes_no(default=True):
-    label = "Install bundled coturn? [Y/n]: " if default else "Install bundled coturn? [y/N]: "
+def ask_yes_no(question="Install bundled coturn?", default=True):
+    choice = "Y/n" if default else "y/N"
+    label = f"{question} [{choice}]: "
     while True:
         print(label, end="", file=sys.stderr, flush=True)
         line = sys.stdin.readline()
@@ -43,13 +45,13 @@ def ask_yes_no(default=True):
             return False
         print("Invalid value: enter yes or no", file=sys.stderr)
         if line == "":
-            raise ValueError("coturn choice is required")
+            raise ValueError(f"{question} choice is required")
 
 
 def nonempty(value, name, maximum=100):
     value = value.strip()
-    if not value or len(value) > maximum or any(ord(char) < 32 for char in value):
-        raise ValueError(f"{name} must contain 1-{maximum} printable characters")
+    if not value or len(value.encode("utf-8")) > maximum or any(ord(char) < 32 for char in value):
+        raise ValueError(f"{name} must contain 1-{maximum} printable UTF-8 bytes")
     return value
 
 
@@ -141,6 +143,143 @@ def write_atomic(path, config):
             pass
 
 
+def validate_existing_rooms(config):
+    rooms = config.get("rooms")
+    if not isinstance(rooms, list) or not rooms:
+        raise SystemExit("configuration must contain at least one room")
+    if len(rooms) >= 100:
+        raise SystemExit("configuration already contains the maximum of 100 rooms")
+
+    identifiers = set()
+    tokens = set()
+    for index, existing in enumerate(rooms, start=1):
+        if not isinstance(existing, dict):
+            raise SystemExit(f"room {index} must be an object")
+        try:
+            identifier = room_id(existing.get("id", ""))
+            nonempty(existing.get("label", ""), "room label")
+        except ValueError as exc:
+            raise SystemExit(f"existing room {index} is invalid: {exc}") from exc
+        token = existing.get("display_token", "")
+        if not isinstance(token, str) or len(token) < 16 or token.startswith(("GENERATE_", "CHANGE_")):
+            raise SystemExit(f'existing room "{identifier}" has an invalid display token')
+        if identifier in identifiers:
+            raise SystemExit(f'duplicate existing room ID "{identifier}"')
+        if token in tokens:
+            raise SystemExit("existing room display tokens must be unique")
+        identifiers.add(identifier)
+        tokens.add(token)
+    return rooms, identifiers, tokens
+
+
+def next_room_number(identifiers, start):
+    number = start
+    while f"room-{number}" in identifiers:
+        number += 1
+    return number
+
+
+def replace_with_backup(path, config):
+    destination = Path(path).resolve()
+    os.chmod(destination, 0o600)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = destination.with_name(f"{destination.name}.backup-{timestamp}")
+    suffix = 1
+    while backup.exists():
+        backup = destination.with_name(f"{destination.name}.backup-{timestamp}-{suffix}")
+        suffix += 1
+
+    fd, temporary = tempfile.mkstemp(
+        prefix=".browserstream-config-",
+        dir=destination.parent,
+        text=True,
+    )
+    linked_backup = False
+    replaced = False
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(config, stream, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(destination, backup)
+        linked_backup = True
+        os.replace(temporary, destination)
+        replaced = True
+        directory_fd = os.open(destination.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except Exception:
+        if linked_backup and not replaced and destination.exists():
+            try:
+                os.unlink(backup)
+            except FileNotFoundError:
+                pass
+        raise
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+    return backup
+
+
+def add_rooms(config_path):
+    destination = Path(config_path).resolve()
+    try:
+        with destination.open(encoding="utf-8") as stream:
+            config = json.load(stream)
+    except FileNotFoundError as exc:
+        raise SystemExit("--add-room requires an existing configuration") from exc
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"existing configuration is invalid JSON: {exc}") from exc
+    if not isinstance(config, dict):
+        raise SystemExit("existing configuration must be a JSON object")
+
+    rooms, identifiers, tokens = validate_existing_rooms(config)
+    try:
+        base_url = public_url(config.get("public_url", ""))
+    except ValueError as exc:
+        raise SystemExit(f"existing public_url is invalid: {exc}") from exc
+
+    added = []
+    while len(rooms) < 100:
+        number = next_room_number(identifiers, len(rooms) + 1)
+
+        def unique_identifier(value):
+            identifier = room_id(value)
+            if identifier in identifiers:
+                raise ValueError(f'room ID "{identifier}" already exists')
+            return identifier
+
+        identifier = ask("Room ID", f"room-{number}", unique_identifier)
+        label = ask("Room label", f"Room {number}", lambda value: nonempty(value, "room label"))
+        token = secrets.token_urlsafe(32)
+        while token in tokens:
+            token = secrets.token_urlsafe(32)
+        room = {"id": identifier, "label": label, "display_token": token}
+        rooms.append(room)
+        identifiers.add(identifier)
+        tokens.add(token)
+        added.append(room)
+        if len(rooms) >= 100:
+            print("Maximum of 100 rooms reached.", file=sys.stderr)
+            break
+        if not ask_yes_no("Add another room?", default=False):
+            break
+
+    backup = replace_with_backup(destination, config)
+    print(f"Backup: {backup}")
+    for room in added:
+        enrollment_url = f"{base_url}/room/{quote(room['id'], safe='')}#token={quote(room['display_token'], safe='')}"
+        print(f"Room added: {room['id']} ({room['label']})")
+        print(f"Enrollment URL: {enrollment_url}")
+    return added
+
+
 def configure(config_path, lan_ip, forced_coturn=""):
     with open("config.example.json", encoding="utf-8") as stream:
         config = json.load(stream)
@@ -187,8 +326,11 @@ def configure(config_path, lan_ip, forced_coturn=""):
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--add-room":
+        add_rooms(sys.argv[2])
+        return
     if len(sys.argv) not in {3, 4}:
-        raise SystemExit("usage: configure.py CONFIG_PATH LAN_IP [0|1]")
+        raise SystemExit("usage: configure.py CONFIG_PATH LAN_IP [0|1] | --add-room CONFIG_PATH")
     forced_coturn = sys.argv[3] if len(sys.argv) == 4 else ""
     if forced_coturn not in {"", "0", "1"}:
         raise SystemExit("coturn selection must be 0 or 1")

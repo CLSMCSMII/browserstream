@@ -43,7 +43,46 @@ coturn relay IP [<detected-IP>]:
 
 Press **Enter** to accept a displayed default. `allowed_origins` is derived from
 the Public URL, random room/TURN secrets are generated, and the selected
-containers are deployed. Existing `config.json` files are never overwritten.
+containers are deployed. The normal install/update path never overwrites an
+existing `config.json`; `--add-room` is the explicit atomic modification path.
+
+## Update an existing installation
+
+Use the same Linux account or privilege level that performed the original
+installation:
+
+```sh
+cd /path/to/browserstream
+cp -p config.json "config.json.backup-$(date +%Y%m%d-%H%M%S)"
+git status --short
+git pull --ff-only origin main
+```
+
+If the installation uses bundled coturn, update both services:
+
+```sh
+./install.sh --with-turn
+```
+
+If coturn is external or not used, update BrowserStream only:
+
+```sh
+./install.sh
+```
+
+The installer reuses the existing `config.json` without prompting and preserves
+rooms, display tokens, URLs, TURN secrets, and other settings. Do not run
+`git reset --hard` when `git status --short` shows local source changes. Verify
+the deployment after updating:
+
+```sh
+docker compose ps
+docker compose logs --tail=100 browserstream
+curl -fsS http://127.0.0.1:18080/healthz
+```
+
+Replace `127.0.0.1` with the configured bind address when BrowserStream listens
+on a LAN IP.
 
 ### 3. Add HTTPS reverse proxy
 
@@ -76,12 +115,21 @@ the reverse proxy. TURN uses TCP/UDP `3478` and UDP `49160-49200`.
 ## Useful commands
 
 ```sh
+# Add one or more rooms to an existing installation and redeploy BrowserStream
+./install.sh --add-room
+
 # Validate configuration
 docker compose run --rm --no-deps browserstream -validate-config
 
 # Stop and remove bundled coturn
 ./install.sh --stop-turn
 ```
+
+`--add-room` preserves existing rooms and settings, generates a unique display
+token for each new room, and creates a mode-`0600` timestamped configuration
+backup before the atomic update. It prints each new display enrollment URL. Up
+to 100 rooms are supported. Use `--add-room --init-only` to update the
+configuration without redeploying.
 
 Use the listening and relay IP prompts to select an address on a multi-homed
 server. Use `./install.sh --init-only` to create configuration without deploying.

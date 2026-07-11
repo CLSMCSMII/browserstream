@@ -29,12 +29,14 @@ WITH_TURN=0
 WITH_TURN_FORCED=
 STOP_TURN=0
 INIT_ONLY=0
+ADD_ROOM=0
 for arg in "$@"; do
   case "$arg" in
     --with-turn) WITH_TURN=1; WITH_TURN_FORCED=1 ;;
+    --add-room) ADD_ROOM=1 ;;
     --init-only) INIT_ONLY=1 ;;
     --stop-turn) STOP_TURN=1 ;;
-    -h|--help) echo "Usage: ./install.sh [--with-turn|--stop-turn] [--init-only]"; exit 0 ;;
+    -h|--help) echo "Usage: ./install.sh [--with-turn|--stop-turn|--add-room] [--init-only]"; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -42,9 +44,20 @@ if [ "$WITH_TURN" -eq 1 ] && [ "$STOP_TURN" -eq 1 ]; then
   echo "--with-turn and --stop-turn are mutually exclusive" >&2
   exit 2
 fi
+if [ "$ADD_ROOM" -eq 1 ] && { [ "$WITH_TURN" -eq 1 ] || [ "$STOP_TURN" -eq 1 ]; }; then
+  echo "--add-room cannot be combined with --with-turn or --stop-turn" >&2
+  exit 2
+fi
 
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
-if [ ! -f "$CONFIG" ]; then
+if [ "$ADD_ROOM" -eq 1 ]; then
+  if [ ! -f "$CONFIG" ]; then
+    echo "--add-room requires an existing configuration: $CONFIG" >&2
+    exit 1
+  fi
+  echo "Using existing $CONFIG."
+  python3 scripts/configure.py --add-room "$CONFIG"
+elif [ ! -f "$CONFIG" ]; then
   LAN_IP=$(python3 scripts/detect_lan_ip.py)
   WITH_TURN=$(python3 scripts/configure.py "$CONFIG" "$LAN_IP" "$WITH_TURN_FORCED")
   echo "Created $CONFIG with LAN IPv4 $LAN_IP and random secrets."
@@ -69,7 +82,8 @@ if [ -z "$BROWSERSTREAM_BIND_ADDRESS" ]; then
 fi
 export BROWSERSTREAM_BIND_ADDRESS
 
-python3 - "$CONFIG" coturn/turnserver.conf "$WITH_TURN" <<'PY'
+if [ "$ADD_ROOM" -eq 0 ]; then
+  python3 - "$CONFIG" coturn/turnserver.conf "$WITH_TURN" <<'PY'
 import json,sys
 with open(sys.argv[1],encoding='utf-8') as f: c=json.load(f)
 t=c.get('turn',{}); server=c.get('coturn',{}); with_turn=sys.argv[3]=='1'
@@ -86,10 +100,13 @@ if server.get('external_ip'):
 lines += ['min-port='+str(server.get('min_port',49160)),'max-port='+str(server.get('max_port',49200))]
 with open(sys.argv[2],'w',encoding='utf-8') as f: f.write('\n'.join(lines)+'\n')
 PY
-chmod 600 coturn/turnserver.conf
+  chmod 600 coturn/turnserver.conf
+fi
 
 if [ "$INIT_ONLY" -eq 1 ]; then
-  if [ "$WITH_TURN" -eq 1 ]; then
+  if [ "$ADD_ROOM" -eq 1 ]; then
+    echo "Room update complete. Run ./install.sh to deploy."
+  elif [ "$WITH_TURN" -eq 1 ]; then
     echo "Initialization complete. Run ./install.sh --with-turn to deploy."
   else
     echo "Initialization complete. Run ./install.sh to deploy."
@@ -115,6 +132,8 @@ docker compose build browserstream
 docker compose run --rm --no-deps browserstream -validate-config
 if [ "$WITH_TURN" -eq 1 ]; then
   docker compose --profile turn up -d
+elif [ "$ADD_ROOM" -eq 1 ]; then
+  docker compose up -d --force-recreate browserstream
 else
   docker compose up -d browserstream
 fi

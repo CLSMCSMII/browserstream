@@ -67,7 +67,7 @@ jobs:
           govulncheck ./...
       - name: Installer and generated-config smoke test
         run: |
-          python3 -m unittest -v tests/test_detect_lan_ip.py
+          python3 -m unittest discover -v tests
           DETECTED_LAN_IP=$(python3 scripts/detect_lan_ip.py)
           export DETECTED_LAN_IP
           BROWSERSTREAM_CONFIG=/tmp/browserstream-config.json ./install.sh --init-only

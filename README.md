@@ -112,6 +112,39 @@ the reverse proxy. TURN uses TCP/UDP `3478` and UDP `49160-49200`.
 3. On a desktop computer, open `https://YOUR-DOMAIN`.
 4. Select the room, enter its code, and choose a screen or window.
 
+## Generate a kiosk URL
+
+Generate a copy/paste-ready display-enrollment URL from the existing
+configuration:
+
+```sh
+# Select interactively when more than one room exists
+./kiosk.sh
+
+# Select a room directly; stdout contains only the URL
+./kiosk.sh training
+
+# Print labeled URLs for every room
+./kiosk.sh --all
+```
+
+For a non-default configuration path:
+
+```sh
+BROWSERSTREAM_CONFIG=/path/to/config.json ./kiosk.sh training
+```
+
+Prompts and room choices are written to stderr, so a single URL can be captured
+without extra text:
+
+```sh
+KIOSK_URL=$(./kiosk.sh training)
+printf '%s\n' "$KIOSK_URL"
+```
+
+A kiosk URL contains the room's secret display token. Treat it like a password:
+do not commit it, post it in public chat, or store it in shared logs.
+
 ## Useful commands
 
 ```sh

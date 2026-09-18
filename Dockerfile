@@ -6,7 +6,7 @@ COPY main.go ./
 COPY core ./core
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/browserstream ./main.go
 
-FROM alpine:3.24.1
+FROM alpine:3.24.2
 RUN apk add --no-cache ca-certificates wget && addgroup -S browserstream && adduser -S -G browserstream -h /app browserstream
 WORKDIR /app
 COPY --from=builder --chown=browserstream:browserstream /out/browserstream ./browserstream
